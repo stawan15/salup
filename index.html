@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>สรุปงานกับน้องโน้ต</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">✦</div><div><div class="brand-name">น้องโน้ต</div><div class="brand-sub">WORK LOG ASSISTANT</div></div></div>
+        <div class="profile-card"><div class="avatar">ส</div><div><div class="profile-name">สวัสดีครับ คุณสตาวัน</div><div class="profile-role">พร้อมช่วยสรุปงานวันนี้</div></div><span class="online-dot"></span></div>
+        <nav class="nav"><button class="nav-item active" data-view="dashboard"><span>⌂</span> ภาพรวม</button><button class="nav-item" data-view="history"><span>▣</span> ประวัติการสรุป</button></nav>
+        <div class="sidebar-tip"><div class="tip-icon">✦</div><div><strong>เคล็ดลับเล็ก ๆ</strong><p>ใส่รายละเอียดเป็นข้อ ๆ ยิ่งชัด น้องโน้ตยิ่งสรุปได้ตรงใจ</p></div></div>
+        <div class="sidebar-footer"><span class="status-dot"></span> บันทึกข้อมูลไว้ในเครื่องนี้</div>
+      </aside>
+      <main class="main-content">
+        <header class="topbar"><div><div class="eyebrow">วันอังคาร · 10 สิงหาคม 2569</div><h1>สรุปงานของคุณ <span>✦</span></h1><p class="subtitle">เขียนสิ่งที่ทำวันนี้ แล้วให้น้องโน้ตเรียบเรียงให้พร้อมส่ง</p></div><div class="top-actions"><button class="icon-button" id="themeBtn" title="สลับธีม">☼</button><button class="help-button">? <span>ช่วยเหลือ</span></button></div></header>
+        <section class="stats-row"><div class="stat-card"><div class="stat-icon purple">▤</div><div><div class="stat-label">สรุปทั้งหมด</div><div class="stat-value" id="totalCount">0 <small>ครั้ง</small></div></div></div><div class="stat-card"><div class="stat-icon green">✓</div><div><div class="stat-label">สัปดาห์นี้</div><div class="stat-value" id="weekCount">0 <small>ครั้ง</small></div></div></div><div class="stat-card next-card"><div class="stat-icon orange">↗</div><div><div class="stat-label">รอบถัดไป</div><div class="stat-value">พฤหัสบดี</div><div class="stat-note">อีก 2 วัน</div></div></div></section>
+        <section class="workspace" id="dashboardView"><div class="section-heading"><div><h2>บันทึกงานวันนี้</h2><p>กรอกข้อมูลสั้น ๆ ไม่ต้องเรียบเรียงเอง</p></div><div class="date-pill">▣ <span id="dateLabel">10 ส.ค. 2569</span></div></div>
+          <div class="form-grid"><label class="field"><span>วันนี้ทำอะไรไปบ้าง?</span><textarea id="workInput" placeholder="เช่น ตรวจสอบเคสที่ค้างอยู่ 5 รายการ\nประสานงานกับทีม QA เรื่องผลทดสอบระบบ\nแก้ไขบั๊กหน้า Login..."></textarea><small class="field-hint">เขียนเป็นข้อ ๆ ได้เลย น้องโน้ตจะจัดการให้เอง</small></label><label class="field"><span>มีอะไรติดขัดหรืออยากให้ติดตามต่อ?</span><textarea id="blockerInput" class="small-textarea" placeholder="เช่น รอข้อมูลจากทีมบัญชีเพื่อนำไปทดสอบ...\nถ้าไม่มี พิมพ์ว่า ไม่มี"></textarea></label></div>
+          <label class="field full-field"><span>งานที่วางแผนจะทำต่อ (ถ้ามี)</span><input id="nextInput" placeholder="เช่น เตรียมสรุปผลการทดสอบและส่งให้หัวหน้าตรวจสอบ" /></label>
+          <div class="form-footer"><span class="auto-save"><span class="status-dot"></span> บันทึกอัตโนมัติ</span><button class="primary-button" id="summarizeBtn"><span>✦</span> ให้ AI ช่วยสรุป <kbd>⌘ ↵</kbd></button></div>
+        </section>
+        <section class="result-panel" id="resultPanel"><div class="result-header"><div><div class="ai-label"><span class="sparkle">✦</span> น้องโน้ตสรุปให้แล้ว</div><h2 id="resultTitle">สรุปการทำงาน · วันอังคารที่ 10 สิงหาคม 2569</h2></div><div class="result-actions"><button class="secondary-button" id="copyBtn">▣ คัดลอก</button><button class="secondary-button" id="editBtn">แก้ไข</button></div></div><div class="summary-box" id="summaryBox"><div class="summary-placeholder">กรอกงานแล้วกด “ให้ AI ช่วยสรุป”<br /><small>น้องโน้ตจะเรียบเรียงให้เป็นภาษามนุษย์ พร้อมส่งต่อได้ทันที</small></div></div><div class="result-meta"><span>✦ สรุปด้วย AI</span><span id="savedTime">ยังไม่มีการสรุปวันนี้</span></div></section>
+        <section class="history-view" id="historyView"><div class="section-heading"><div><h2>ประวัติการสรุป</h2><p>เปิดดูงานย้อนหลังที่บันทึกไว้</p></div></div><div id="historyList" class="history-list"></div></section>
+        <footer class="main-footer">น้องโน้ตช่วยจัดระเบียบความคิดให้คุณ <span>♥</span></footer>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
