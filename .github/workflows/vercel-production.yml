@@ -33,6 +33,7 @@ jobs:
         run: |
           node --check public/app.js
           node --check api/summarize.js
+          node --check api/config.js
           node --check scripts/local-server.mjs
 
       - name: Install Vercel CLI

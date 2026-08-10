@@ -1,9 +1,41 @@
 const STORAGE_KEY = 'worklog-ai-entries';
+let supabaseClient = null;
+let supabaseUser = null;
 const $ = (id) => document.getElementById(id);
 const getEntries = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
 const saveEntries = (entries) => localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
 const thaiDate = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long' });
 const today = new Date();
+
+async function initSupabase() {
+  try {
+    const response = await fetch('/api/config');
+    const config = await response.json();
+    if (!config.url || !config.key || !window.supabase) return;
+    supabaseClient = window.supabase.createClient(config.url, config.key);
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    if (sessionData.session) supabaseUser = sessionData.session.user;
+    else {
+      const { data, error } = await supabaseClient.auth.signInAnonymously();
+      if (error) throw error;
+      supabaseUser = data.user;
+    }
+    const { data: rows, error } = await supabaseClient.from('work_logs').select('*').order('created_at', { ascending: false }).limit(30);
+    if (error) throw error;
+    if (rows) {
+      saveEntries(rows.map(row => ({ createdAt: row.created_at, title: `สรุปการทำงาน · ${row.work_date}`, plainSummary: (row.ai_summary || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), summary: row.ai_summary || '' })));
+      renderStats();
+    }
+  } catch (error) {
+    console.warn('Supabase is not ready:', error.message);
+  }
+}
+
+async function saveToSupabase({ work, blocker, next, summary }) {
+  if (!supabaseClient || !supabaseUser) return { error: new Error('Supabase session is not ready') };
+  const { error } = await supabaseClient.from('work_logs').insert({ user_id: supabaseUser.id, work_date: new Date().toISOString().slice(0, 10), work_text: work, blocker_text: blocker || null, next_text: next || null, ai_summary: summary });
+  return { error };
+}
 
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2400); }
 function demoSummary(work, blocker, next) {
@@ -28,8 +60,9 @@ $('dateLabel').textContent = new Intl.DateTimeFormat('th-TH', {day:'numeric', mo
 $('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
 renderStats();
 document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
-$('summarizeBtn').addEventListener('click', async () => { const work=$('workInput').value.trim(), blocker=$('blockerInput').value.trim(), next=$('nextInput').value.trim(); if(!work){showToast('ลองใส่งานที่ทำวันนี้ก่อนนะครับ'); $('workInput').focus(); return;} const btn=$('summarizeBtn'); btn.disabled=true; btn.innerHTML='<span>✦</span> กำลังเรียบเรียง...'; const summary=await requestSummary(work,blocker,next); $('summaryBox').innerHTML=summary; const plainSummary=summary.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(); const entries=getEntries(); entries.unshift({createdAt:new Date().toISOString(),title:`สรุปการทำงาน · ${thaiDate.format(today)}`,plainSummary,summary}); saveEntries(entries.slice(0,30)); renderStats(); $('savedTime').textContent=`บันทึกเมื่อ ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`; btn.disabled=false; btn.innerHTML='<span>✦</span> ให้ AI ช่วยสรุป <kbd>⌘ ↵</kbd>'; showToast('สรุปงานและบันทึกเรียบร้อยแล้ว'); });
+$('summarizeBtn').addEventListener('click', async () => { const work=$('workInput').value.trim(), blocker=$('blockerInput').value.trim(), next=$('nextInput').value.trim(); if(!work){showToast('ลองใส่งานที่ทำวันนี้ก่อนนะครับ'); $('workInput').focus(); return;} const btn=$('summarizeBtn'); btn.disabled=true; btn.innerHTML='<span>✦</span> กำลังเรียบเรียง...'; const summary=await requestSummary(work,blocker,next); $('summaryBox').innerHTML=summary; const plainSummary=summary.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(); const createdAt=new Date().toISOString(); const entries=getEntries(); entries.unshift({createdAt,title:`สรุปการทำงาน · ${thaiDate.format(today)}`,plainSummary,summary}); saveEntries(entries.slice(0,30)); const { error }=await saveToSupabase({work,blocker,next,summary}); renderStats(); $('savedTime').textContent=`บันทึกเมื่อ ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`; btn.disabled=false; btn.innerHTML='<span>✦</span> ให้ AI ช่วยสรุป <kbd>⌘ ↵</kbd>'; showToast(error ? 'บันทึกในเครื่องแล้ว แต่ยังบันทึก Supabase ไม่สำเร็จ' : 'สรุปงานและบันทึกลง Supabase แล้ว'); });
 $('copyBtn').addEventListener('click', async () => { const text=$('summaryBox').innerText; if(text.includes('กรอกงานแล้ว')) return showToast('ยังไม่มีสรุปให้คัดลอก'); await navigator.clipboard.writeText(text); showToast('คัดลอกสรุปแล้ว'); });
 $('editBtn').addEventListener('click', () => $('workInput').focus());
 $('themeBtn').addEventListener('click', () => document.body.classList.toggle('dark'));
 document.addEventListener('keydown', e => { if((e.metaKey||e.ctrlKey)&&e.key==='Enter') $('summarizeBtn').click(); });
+initSupabase();
