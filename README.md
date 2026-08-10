@@ -10,19 +10,19 @@
 
 ```bash
 npm install
-OPENAI_API_KEY="ใส่คีย์ของคุณ" npm start
+GEMINI_API_KEY="ใส่คีย์ของคุณ" npm start
 ```
 
 จากนั้นเปิด http://localhost:4173
 
 ไฟล์ `scripts/local-server.mjs` ใช้สำหรับรันบนเครื่องเท่านั้น ส่วน Vercel จะใช้ `api/summarize.js` เป็น Serverless Function โดยอัตโนมัติ
 
-ใช้ `OPENAI_MODEL` เพื่อเปลี่ยนโมเดลได้ เช่น `gpt-4o-mini` (ค่าเริ่มต้น) หรือโมเดลที่บัญชีของคุณเปิดใช้
+ใช้ `GEMINI_MODEL` เพื่อเปลี่ยนโมเดลได้ เช่น `gemini-2.5-flash` (ค่าเริ่มต้น) หรือโมเดลที่บัญชีของคุณเปิดใช้
 
 ## Deploy บน Vercel
 
 1. Import repository `stawan15/salup` ใน Vercel
-2. ตั้งค่า Environment Variable ชื่อ `OPENAI_API_KEY` ใน Project Settings
+2. ตั้งค่า Environment Variable ชื่อ `GEMINI_API_KEY` ใน Project Settings
 3. กด Deploy ได้เลย เพราะ `api/summarize.js` เป็น Vercel Function อยู่แล้ว
 
 เปิด `Authentication → Providers → Email` ใน Supabase สำหรับการสมัครสมาชิกด้วยอีเมล และตั้งค่า Site URL/Redirect URLs เป็น `https://ai-summary.teveus.xyz` (รวม `https://salup.vercel.app` สำหรับทดสอบ)
