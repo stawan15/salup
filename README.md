@@ -25,7 +25,7 @@ OPENAI_API_KEY="ใส่คีย์ของคุณ" npm start
 2. ตั้งค่า Environment Variable ชื่อ `OPENAI_API_KEY` ใน Project Settings
 3. กด Deploy ได้เลย เพราะ `api/summarize.js` เป็น Vercel Function อยู่แล้ว
 
-เปิด `Authentication → Providers → Anonymous Sign-Ins` ใน Supabase เพื่อให้เว็บสร้าง session สำหรับผู้ใช้และใช้ RLS บันทึกข้อมูลได้อย่างปลอดภัย
+เปิด `Authentication → Providers → Email` ใน Supabase สำหรับการสมัครสมาชิกด้วยอีเมล และตั้งค่า Site URL/Redirect URLs เป็น `https://ai-summary.teveus.xyz` (รวม `https://salup.vercel.app` สำหรับทดสอบ)
 
 ถ้าจะใช้โดเมน `app.teveus.xyz` ให้เพิ่มโดเมนนี้ใน Vercel ที่ `Settings > Domains` แล้วสร้าง DNS record ใน Namecheap เป็น `CNAME`, Host `app`, Value ตามที่ Vercel แสดง (โดยทั่วไปคือ `cname.vercel-dns.com`)
 
