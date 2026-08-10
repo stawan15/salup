@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     const { work = '', blocker = '', next = '' } = req.body || {};
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || 'gpt-5.6-luna',
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       instructions,
       input: `งานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}`,
       text: { verbosity: 'low' },

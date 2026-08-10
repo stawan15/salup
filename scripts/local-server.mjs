@@ -13,7 +13,7 @@ const server = http.createServer(async (req,res) => {
   if (req.method === 'POST' && req.url === '/api/summarize') {
     if (!client) return send(res, 503, JSON.stringify({error:'OPENAI_API_KEY is not configured'}));
     let raw=''; for await (const chunk of req) raw += chunk;
-    try { const {work='', blocker='', next=''}=JSON.parse(raw); const response=await client.responses.create({model:process.env.OPENAI_MODEL || 'gpt-5.6-luna', instructions:prompt, input:`งานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}`, text:{verbosity:'low'}}); send(res,200,JSON.stringify({summary:response.output_text})); } catch (error) { send(res,500,JSON.stringify({error:error.message})); } return;
+    try { const {work='', blocker='', next=''}=JSON.parse(raw); const response=await client.responses.create({model:process.env.OPENAI_MODEL || 'gpt-4o-mini', instructions:prompt, input:`งานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}`, text:{verbosity:'low'}}); send(res,200,JSON.stringify({summary:response.output_text})); } catch (error) { send(res,500,JSON.stringify({error:error.message})); } return;
   }
   const file = path.join(root, req.url === '/' ? 'index.html' : req.url.replace(/^\//,''));
   if (!file.startsWith(root) || !fs.existsSync(file)) return send(res,404,'Not found','text/plain');
