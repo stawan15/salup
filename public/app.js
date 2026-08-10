@@ -13,6 +13,7 @@ const today = new Date();
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 const formatWorkDate = (value) => new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00`));
 const plainToHtml = (value) => String(value || '').split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('') || '<p>ยังไม่มีข้อความ</p>';
+const htmlToText = (value) => { const container = document.createElement('div'); container.innerHTML = value || ''; return container.innerText.trim(); };
 
 function showToast(message) {
   const el = $('toast');
@@ -136,6 +137,11 @@ async function updateRemoteSummary(id, summary) {
   return await supabaseClient.from('work_logs').update({ ai_summary: summary }).eq('id', id).eq('user_id', supabaseUser.id);
 }
 
+async function deleteRemoteEntry(id) {
+  if (!id || !supabaseClient || !supabaseUser) return { error: null };
+  return await supabaseClient.from('work_logs').delete().eq('id', id).eq('user_id', supabaseUser.id);
+}
+
 async function requestSummary(work, blocker, next, voice, format, category) {
   const response = await fetch('/api/summarize', {
     method: 'POST',
@@ -161,11 +167,22 @@ function renderHistory() {
     && (historyCategory === 'all' || entry.category === historyCategory),
   );
   $('historyList').innerHTML = entries.length
-    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-edit" type="button">แก้ไข</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-editor hidden"><textarea>${escapeHtml(entry.plainSummary)}</textarea><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-save" type="button">บันทึกการแก้ไข</button></div></div></article>`).join('')
+    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-copy" type="button">คัดลอก</button><button class="history-edit" type="button">แก้ไข</button><button class="history-delete" type="button">ลบ</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-editor hidden"><textarea>${escapeHtml(entry.plainSummary)}</textarea><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-save" type="button">บันทึกการแก้ไข</button></div></div></article>`).join('')
     : '<div class="history-empty">ยังไม่มีประวัติที่ตรงกับตัวกรองนี้</div>';
   document.querySelectorAll('.history-item').forEach((item) => {
+    const copyButton = item.querySelector('.history-copy');
     const editButton = item.querySelector('.history-edit');
     const editor = item.querySelector('.history-editor');
+    copyButton?.addEventListener('click', async () => {
+      const entry = getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
+      if (!entry) return;
+      try {
+        await navigator.clipboard.writeText(htmlToText(entry.summary) || entry.plainSummary);
+        showToast('คัดลอกสรุปแล้ว');
+      } catch (error) {
+        showToast('คัดลอกไม่ได้ ลองคัดลอกข้อความด้วยตัวเองครับ');
+      }
+    });
     editButton?.addEventListener('click', () => { editor.classList.remove('hidden'); editButton.classList.add('hidden'); editor.querySelector('textarea').focus(); });
     item.querySelector('.history-cancel')?.addEventListener('click', () => { editor.classList.add('hidden'); editButton.classList.remove('hidden'); });
     item.querySelector('.history-save')?.addEventListener('click', async () => {
@@ -181,6 +198,16 @@ function renderHistory() {
       saveEntries(getEntries());
       renderHistory();
       showToast('แก้ไขสรุปและบันทึกแล้ว');
+    });
+    item.querySelector('.history-delete')?.addEventListener('click', async () => {
+      const entry = getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
+      if (!entry || !window.confirm('ลบสรุปนี้ออกจากประวัติใช่ไหม?')) return;
+      const result = await deleteRemoteEntry(entry.id);
+      if (result.error) return showToast(`ลบสรุปไม่ได้: ${result.error.message}`);
+      saveEntries(getEntries().filter((candidate) => candidate.createdAt !== entry.createdAt));
+      renderStats();
+      renderHistory();
+      showToast('ลบสรุปแล้ว');
     });
   });
 }
