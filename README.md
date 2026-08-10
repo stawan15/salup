@@ -15,6 +15,8 @@ OPENAI_API_KEY="ใส่คีย์ของคุณ" npm start
 
 จากนั้นเปิด http://localhost:4173
 
+ไฟล์ `local-server.mjs` ใช้สำหรับรันบนเครื่องเท่านั้น ส่วน Vercel จะใช้ `api/summarize.js` เป็น Serverless Function โดยอัตโนมัติ
+
 ใช้ `OPENAI_MODEL` เพื่อเปลี่ยนโมเดลได้ เช่น `gpt-5.6-luna` (ค่าเริ่มต้น) หรือโมเดลที่บัญชีของคุณเปิดใช้
 
 ## Deploy บน Vercel
