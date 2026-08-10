@@ -19,9 +19,10 @@ async function initSupabase() {
     if (!config.url || !config.key || !window.supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
     supabaseClient = window.supabase.createClient(config.url, config.key);
     const { data: sessionData } = await supabaseClient.auth.getSession();
-    if (sessionData.session) { supabaseUser = sessionData.session.user; showApp(); await loadRemoteEntries(); }
+    if (sessionData.session?.user?.is_anonymous) { await supabaseClient.auth.signOut(); showAuth(); }
+    else if (sessionData.session) { supabaseUser = sessionData.session.user; showApp(); await loadRemoteEntries(); }
     else showAuth();
-    supabaseClient.auth.onAuthStateChange((_event, session) => { if (session) { supabaseUser = session.user; showApp(); loadRemoteEntries(); } });
+    supabaseClient.auth.onAuthStateChange((_event, session) => { if (session?.user?.is_anonymous) return; if (session) { supabaseUser = session.user; showApp(); loadRemoteEntries(); } });
   } catch (error) { showAuth(); $('authMessage').textContent = error.message; }
 }
 async function loadRemoteEntries() { const { data: rows, error } = await supabaseClient.from('work_logs').select('*').order('created_at', { ascending: false }).limit(30); if (error) throw error; saveEntries((rows || []).map(row => ({ createdAt: row.created_at, title: `สรุปการทำงาน · ${row.work_date}`, plainSummary: (row.ai_summary || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), summary: row.ai_summary || '' }))); renderStats(); renderHistory(); }
