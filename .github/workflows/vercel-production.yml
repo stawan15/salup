@@ -31,7 +31,7 @@ jobs:
 
       - name: Validate JavaScript
         run: |
-          node --check app.js
+          node --check public/app.js
           node --check api/summarize.js
           node --check scripts/local-server.mjs
 
