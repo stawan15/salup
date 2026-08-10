@@ -17,17 +17,23 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'GEMINI_API_KEY is not configured' });
   try {
-    const { work = '', blocker = '', next = '', voice = 'neutral', format = 'report', category = 'ทั่วไป' } = req.body || {};
+    const { mode = 'daily', work = '', blocker = '', next = '', voice = 'neutral', format = 'report', category = 'ทั่วไป', entries = [] } = req.body || {};
     const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
     const voiceGuide = { neutral: 'ใช้สรรพนามกลาง สุภาพ เป็นธรรมชาติ ไม่ต้องเน้นเพศ', female: 'เขียนด้วยน้ำเสียงผู้หญิง ใช้สรรพนาม “หนู” ได้เมื่อเหมาะสม และลงท้ายด้วย “ค่ะ” หรือ “นะคะ” อย่างพอดี น้ำเสียงสุภาพกึ่งทางการ ไม่สนิทหรืออ้อนเกินไป', male: 'เขียนด้วยน้ำเสียงผู้ชาย ใช้สรรพนาม “ผม” และลงท้ายด้วย “ครับ” อย่างพอดี น้ำเสียงสุภาพกึ่งทางการ ไม่แข็งหรือเป็นทางการเกินไป' }[voice] || 'ใช้สรรพนามกลาง สุภาพ เป็นธรรมชาติ';
     const formatGuide = { report: 'จัดเป็นบทรายงานสำหรับส่งหัวหน้า มีหัวข้อชัดเจนและภาษาสุภาพกึ่งทางการ', speech: 'จัดเป็นบทพูดที่อ่านออกเสียงได้ลื่นไหล สุภาพ มีประโยคเปิดและปิดพอดี ไม่ใช้คำสนิทเกินไป', chat: 'เขียนเหมือนเล่าให้เพื่อนร่วมงานฟังด้วยภาษาพูดสุภาพกึ่งทางการ ไม่แข็งเป็นรายงานและไม่คุยเล่น', bullet: 'สรุปเป็นข้อสั้น ๆ ชัดเจน เหมาะสำหรับอ่านเร็ว ใช้ภาษางานที่สุภาพ' }[format] || 'จัดเป็นบทรายงานสำหรับส่งหัวหน้า';
-    const styleInstructions = `${voiceGuide}\n${formatGuide}\nห้ามเปลี่ยนข้อเท็จจริงหรือเติมข้อมูลที่ผู้ใช้ไม่ได้ให้มา`;
+    const weeklyGuide = mode === 'weekly'
+      ? 'นี่คือข้อมูลสะสมรายสัปดาห์ ให้เรียบเรียงเป็นภาพรวมของงานที่ทำ แยกสิ่งที่เดินหน้า ปัญหาที่พบ และสิ่งที่ควรทำต่อเมื่อมีข้อมูล ห้ามเขียนแยกรายวันแบบซ้ำ ๆ และห้ามนับจำนวนขึ้นมาเอง'
+      : '';
+    const styleInstructions = `${voiceGuide}\n${formatGuide}\n${weeklyGuide}\nห้ามเปลี่ยนข้อเท็จจริงหรือเติมข้อมูลที่ผู้ใช้ไม่ได้ให้มา`;
+    const inputText = mode === 'weekly'
+      ? entries.map((entry) => `วันที่ ${entry.date} · หมวด ${entry.category || 'ทั่วไป'}\nงาน: ${entry.work || 'ไม่ได้ระบุ'}\nสิ่งที่ติดขัด: ${entry.blocker || 'ไม่มี'}\nแผนงานถัดไป: ${entry.next || 'ไม่ได้ระบุ'}`).join('\n\n')
+      : `หมวดงาน: ${category}\n\nงานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}`;
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: `${instructions}\n\nสไตล์ที่ผู้ใช้เลือก:\n${styleInstructions}` }] },
-        contents: [{ role: 'user', parts: [{ text: `หมวดงาน: ${category}\n\nงานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}` }] }],
+        contents: [{ role: 'user', parts: [{ text: inputText }] }],
       }),
     });
     const data = await response.json();

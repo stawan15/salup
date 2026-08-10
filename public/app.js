@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'worklog-ai-entries';
+const WEEKLY_STORAGE_KEY = 'worklog-ai-weekly-entries';
 let supabaseClient = null;
 let supabaseUser = null;
 let authMode = 'login';
@@ -8,6 +9,8 @@ let historyCategory = 'all';
 const $ = (id) => document.getElementById(id);
 const getEntries = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
 const saveEntries = (entries) => localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+const getWeeklyEntries = () => JSON.parse(localStorage.getItem(WEEKLY_STORAGE_KEY) || '[]');
+const saveWeeklyEntries = (entries) => localStorage.setItem(WEEKLY_STORAGE_KEY, JSON.stringify(entries));
 const thaiDate = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long' });
 const today = new Date();
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
@@ -81,11 +84,10 @@ async function initSupabase() {
 }
 
 async function loadRemoteEntries() {
-  const { data: rows, error } = await supabaseClient
-    .from('work_logs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(30);
+  const [{ data: rows, error }, weeklyResult] = await Promise.all([
+    supabaseClient.from('work_logs').select('*').order('created_at', { ascending: false }).limit(30),
+    supabaseClient.from('weekly_summaries').select('*').order('created_at', { ascending: false }).limit(12),
+  ]);
   if (error) throw error;
   saveEntries((rows || []).map((row) => ({
     id: row.id,
@@ -93,12 +95,18 @@ async function loadRemoteEntries() {
     title: `สรุปการทำงาน · ${formatWorkDate(row.work_date)}`,
     plainSummary: (row.ai_summary || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
     summary: row.ai_summary || '',
+    workDate: row.work_date,
+    workText: row.work_text || '',
+    blockerText: row.blocker_text || '',
+    nextText: row.next_text || '',
     category: row.category || 'ทั่วไป',
     voice: row.voice_mode || 'neutral',
     format: row.output_mode || 'report',
   })));
+  if (!weeklyResult.error) saveWeeklyEntries((weeklyResult.data || []).map((row) => ({ id: row.id, start: row.week_start, end: row.week_end, summary: row.ai_summary, createdAt: row.created_at })));
   renderStats();
   renderHistory();
+  renderWeeklySource();
 }
 
 async function refreshRemoteEntries() {
@@ -142,6 +150,11 @@ async function deleteRemoteEntry(id) {
   return await supabaseClient.from('work_logs').delete().eq('id', id).eq('user_id', supabaseUser.id).select('id');
 }
 
+async function saveWeeklyToSupabase(start, end, summary) {
+  if (!supabaseClient || !supabaseUser) return { error: new Error('ยังไม่ได้เข้าสู่ระบบ') };
+  return await supabaseClient.from('weekly_summaries').insert({ user_id: supabaseUser.id, week_start: start, week_end: end, ai_summary: summary }).select('id').single();
+}
+
 async function requestSummary(work, blocker, next, voice, format, category) {
   const response = await fetch('/api/summarize', {
     method: 'POST',
@@ -154,10 +167,65 @@ async function requestSummary(work, blocker, next, voice, format, category) {
   return data.summary;
 }
 
+async function requestWeeklySummary(entries, voice) {
+  const response = await fetch('/api/summarize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'weekly', voice, format: 'report', category: 'สรุปประจำสัปดาห์', entries }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
+  if (!data.summary) throw new Error('Gemini ไม่ส่งผลลัพธ์กลับมา');
+  return data.summary;
+}
+
 function renderStats() {
   const entries = getEntries();
   $('totalCount').innerHTML = `${entries.length} <small>ครั้ง</small>`;
   $('weekCount').innerHTML = `${entries.filter((entry) => (Date.now() - new Date(entry.createdAt)) < 7 * 86400000).length} <small>ครั้ง</small>`;
+}
+
+function localDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function setCurrentWeek() {
+  const date = new Date();
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const start = new Date(date);
+  start.setDate(date.getDate() + diff);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  $('weekStart').value = localDateString(start);
+  $('weekEnd').value = localDateString(end);
+}
+
+function getWeekLogs() {
+  const start = $('weekStart').value;
+  const end = $('weekEnd').value;
+  return getEntries().filter((entry) => {
+    const date = entry.workDate || entry.createdAt?.slice(0, 10);
+    return date && date >= start && date <= end;
+  });
+}
+
+function renderWeeklySource() {
+  if (!$('weeklySource')) return;
+  const logs = getWeekLogs();
+  $('weeklySource').textContent = logs.length
+    ? `พบ ${logs.length} บันทึกในช่วงวันที่เลือก · ระบบจะรวมงาน ปัญหา และแผนงานถัดไปให้`
+    : 'ยังไม่พบบันทึกงานในช่วงวันที่เลือก';
+}
+
+function renderWeeklyResult(entry) {
+  if (!entry) return;
+  $('weeklySummaryBox').innerHTML = entry.summary;
+  $('weeklyResultTitle').textContent = `สรุปประจำสัปดาห์ · ${formatWorkDate(entry.start)} – ${formatWorkDate(entry.end)}`;
+  $('weeklySavedTime').textContent = `บันทึกเมื่อ ${new Date(entry.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function renderHistory() {
@@ -218,7 +286,9 @@ function switchView(view) {
   $('dashboardView').style.display = view === 'dashboard' ? 'block' : 'none';
   $('resultPanel').style.display = view === 'dashboard' ? 'block' : 'none';
   $('historyView').style.display = view === 'history' ? 'block' : 'none';
+  $('weeklyView').style.display = view === 'weekly' ? 'block' : 'none';
   if (view === 'history') renderHistory();
+  if (view === 'weekly') renderWeeklySource();
 }
 
 $('authToggle').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'signup' : 'login'));
@@ -257,6 +327,7 @@ $('logoutBtn').addEventListener('click', async () => {
 $('dateLabel').textContent = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(today);
 $('todayLabel').textContent = thaiDate.format(today);
 $('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
+setCurrentWeek();
 renderStats();
 
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
@@ -269,6 +340,8 @@ $('historyCategory').addEventListener('change', (event) => {
   historyCategory = event.target.value;
   renderHistory();
 });
+$('weekStart').addEventListener('change', renderWeeklySource);
+$('weekEnd').addEventListener('change', renderWeeklySource);
 
 $('summarizeBtn').addEventListener('click', async () => {
   const work = $('workInput').value.trim();
@@ -298,7 +371,7 @@ $('summarizeBtn').addEventListener('click', async () => {
   const plainSummary = summary.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   const createdAt = new Date().toISOString();
   const entries = getEntries();
-  const localEntry = { createdAt, title: `สรุปการทำงาน · ${thaiDate.format(today)}`, plainSummary, summary, category, voice, format };
+  const localEntry = { createdAt, title: `สรุปการทำงาน · ${thaiDate.format(today)}`, plainSummary, summary, category, voice, format, workDate: new Date().toISOString().slice(0, 10), workText: work, blockerText: blocker, nextText: next };
   entries.unshift(localEntry);
   saveEntries(entries.slice(0, 30));
   const { data: savedRow, error } = await saveToSupabase({ work, blocker, next, summary, category, voice, format });
@@ -316,6 +389,40 @@ $('summarizeBtn').addEventListener('click', async () => {
   button.disabled = false;
   button.innerHTML = 'สรุปงาน <span>→</span>';
   showToast(error ? `บันทึกไม่สำเร็จ: ${error.message}` : 'สรุปด้วย AI และบันทึกเรียบร้อยแล้ว');
+});
+
+$('weeklySummarizeBtn').addEventListener('click', async () => {
+  const start = $('weekStart').value;
+  const end = $('weekEnd').value;
+  const logs = getWeekLogs();
+  if (!start || !end || start > end) return showToast('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+  if (!logs.length) return showToast('ยังไม่มีบันทึกงานในช่วงวันที่เลือก');
+  const button = $('weeklySummarizeBtn');
+  button.disabled = true;
+  button.textContent = 'กำลังรวมงาน...';
+  try {
+    const summary = await requestWeeklySummary(logs.map((entry) => ({ date: entry.workDate || entry.createdAt.slice(0, 10), category: entry.category || 'ทั่วไป', work: entry.workText || entry.plainSummary, blocker: entry.blockerText || '', next: entry.nextText || '' })), $('voiceMode').value);
+    const weeklyEntry = { start, end, summary, createdAt: new Date().toISOString() };
+    const { data: savedRow, error } = await saveWeeklyToSupabase(start, end, summary);
+    if (error) throw error;
+    if (savedRow?.id) weeklyEntry.id = savedRow.id;
+    const weeklyEntries = getWeeklyEntries();
+    weeklyEntries.unshift(weeklyEntry);
+    saveWeeklyEntries(weeklyEntries.slice(0, 12));
+    renderWeeklyResult(weeklyEntry);
+    showToast('สรุปรายสัปดาห์และบันทึกเรียบร้อยแล้ว');
+  } catch (error) {
+    showToast(`สรุปรายสัปดาห์ไม่ได้: ${error.message}`);
+  }
+  button.disabled = false;
+  button.innerHTML = 'สรุปสัปดาห์ <span>→</span>';
+});
+
+$('weeklyCopyBtn').addEventListener('click', async () => {
+  const text = $('weeklySummaryBox').innerText;
+  if (text.includes('สรุปรายสัปดาห์จะแสดงตรงนี้')) return showToast('ยังไม่มีสรุปให้คัดลอก');
+  await navigator.clipboard.writeText(text);
+  showToast('คัดลอกสรุปรายสัปดาห์แล้ว');
 });
 
 $('copyBtn').addEventListener('click', async () => {
