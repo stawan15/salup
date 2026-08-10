@@ -33,7 +33,7 @@ jobs:
         run: |
           node --check app.js
           node --check api/summarize.js
-          node --check local-server.mjs
+          node --check scripts/local-server.mjs
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
