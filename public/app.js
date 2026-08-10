@@ -107,17 +107,25 @@ async function refreshRemoteEntries() {
 
 async function saveToSupabase({ work, blocker, next, summary, category, voice, format }) {
   if (!supabaseClient || !supabaseUser) return { error: new Error('ยังไม่ได้เข้าสู่ระบบ') };
-  return await supabaseClient.from('work_logs').insert({
+  const baseRecord = {
     user_id: supabaseUser.id,
     work_date: new Date().toISOString().slice(0, 10),
     work_text: work,
     blocker_text: blocker || null,
     next_text: next || null,
     ai_summary: summary,
+  };
+  const result = await supabaseClient.from('work_logs').insert({
+    ...baseRecord,
     category,
     voice_mode: voice,
     output_mode: format,
   });
+  // Keep saving older projects while Supabase has not refreshed the new schema yet.
+  if (result.error && /schema cache|category.*column/i.test(result.error.message || '')) {
+    return await supabaseClient.from('work_logs').insert(baseRecord);
+  }
+  return result;
 }
 
 async function requestSummary(work, blocker, next, voice, format, category) {
