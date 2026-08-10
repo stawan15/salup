@@ -11,6 +11,8 @@ const saveEntries = (entries) => localStorage.setItem(STORAGE_KEY, JSON.stringif
 const thaiDate = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long' });
 const today = new Date();
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+const formatWorkDate = (value) => new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00`));
+const plainToHtml = (value) => String(value || '').split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('') || '<p>ยังไม่มีข้อความ</p>';
 
 function showToast(message) {
   const el = $('toast');
@@ -85,8 +87,9 @@ async function loadRemoteEntries() {
     .limit(30);
   if (error) throw error;
   saveEntries((rows || []).map((row) => ({
+    id: row.id,
     createdAt: row.created_at,
-    title: `สรุปการทำงาน · ${row.work_date}`,
+    title: `สรุปการทำงาน · ${formatWorkDate(row.work_date)}`,
     plainSummary: (row.ai_summary || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
     summary: row.ai_summary || '',
     category: row.category || 'ทั่วไป',
@@ -120,12 +123,17 @@ async function saveToSupabase({ work, blocker, next, summary, category, voice, f
     category,
     voice_mode: voice,
     output_mode: format,
-  });
+  }).select('id').single();
   // Keep saving older projects while Supabase has not refreshed the new schema yet.
   if (result.error && /schema cache|category.*column/i.test(result.error.message || '')) {
-    return await supabaseClient.from('work_logs').insert(baseRecord);
+    return await supabaseClient.from('work_logs').insert(baseRecord).select('id').single();
   }
   return result;
+}
+
+async function updateRemoteSummary(id, summary) {
+  if (!id || !supabaseClient || !supabaseUser) return { error: null };
+  return await supabaseClient.from('work_logs').update({ ai_summary: summary }).eq('id', id).eq('user_id', supabaseUser.id);
 }
 
 async function requestSummary(work, blocker, next, voice, format, category) {
@@ -153,8 +161,28 @@ function renderHistory() {
     && (historyCategory === 'all' || entry.category === historyCategory),
   );
   $('historyList').innerHTML = entries.length
-    ? entries.map((entry) => `<article class="history-item"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div></div><p>${escapeHtml(entry.plainSummary)}</p></article>`).join('')
+    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-edit" type="button">แก้ไข</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-editor hidden"><textarea>${escapeHtml(entry.plainSummary)}</textarea><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-save" type="button">บันทึกการแก้ไข</button></div></div></article>`).join('')
     : '<div class="history-empty">ยังไม่มีประวัติที่ตรงกับตัวกรองนี้</div>';
+  document.querySelectorAll('.history-item').forEach((item) => {
+    const editButton = item.querySelector('.history-edit');
+    const editor = item.querySelector('.history-editor');
+    editButton?.addEventListener('click', () => { editor.classList.remove('hidden'); editButton.classList.add('hidden'); editor.querySelector('textarea').focus(); });
+    item.querySelector('.history-cancel')?.addEventListener('click', () => { editor.classList.add('hidden'); editButton.classList.remove('hidden'); });
+    item.querySelector('.history-save')?.addEventListener('click', async () => {
+      const entry = getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
+      if (!entry) return;
+      const text = editor.querySelector('textarea').value.trim();
+      if (!text) return showToast('สรุปต้องมีข้อความอย่างน้อย 1 บรรทัด');
+      const summary = plainToHtml(text);
+      const result = await updateRemoteSummary(entry.id, summary);
+      if (result.error) return showToast(`บันทึกการแก้ไขไม่ได้: ${result.error.message}`);
+      entry.summary = summary;
+      entry.plainSummary = text.replace(/\s+/g, ' ').trim();
+      saveEntries(getEntries());
+      renderHistory();
+      showToast('แก้ไขสรุปและบันทึกแล้ว');
+    });
+  });
 }
 
 function switchView(view) {
@@ -242,9 +270,14 @@ $('summarizeBtn').addEventListener('click', async () => {
   const plainSummary = summary.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   const createdAt = new Date().toISOString();
   const entries = getEntries();
-  entries.unshift({ createdAt, title: `สรุปการทำงาน · ${thaiDate.format(today)}`, plainSummary, summary, category, voice, format });
+  const localEntry = { createdAt, title: `สรุปการทำงาน · ${thaiDate.format(today)}`, plainSummary, summary, category, voice, format };
+  entries.unshift(localEntry);
   saveEntries(entries.slice(0, 30));
-  const { error } = await saveToSupabase({ work, blocker, next, summary, category, voice, format });
+  const { data: savedRow, error } = await saveToSupabase({ work, blocker, next, summary, category, voice, format });
+  if (savedRow?.id) {
+    localEntry.id = savedRow.id;
+    saveEntries(entries.slice(0, 30));
+  }
   if (!error) {
     $('workInput').value = '';
     $('blockerInput').value = '';
@@ -263,7 +296,36 @@ $('copyBtn').addEventListener('click', async () => {
   await navigator.clipboard.writeText(text);
   showToast('คัดลอกสรุปแล้ว');
 });
-$('editBtn').addEventListener('click', () => $('workInput').focus());
+let resultEditing = false;
+$('editBtn').addEventListener('click', async () => {
+  const box = $('summaryBox');
+  if (box.querySelector('.summary-placeholder')) return showToast('ยังไม่มีสรุปให้แก้ไข');
+  if (!resultEditing) {
+    resultEditing = true;
+    box.contentEditable = 'true';
+    box.classList.add('is-editing');
+    $('editBtn').textContent = 'บันทึกสรุป';
+    box.focus();
+    return;
+  }
+  const text = box.innerText.trim();
+  const latest = getEntries()[0];
+  const summary = plainToHtml(text);
+  if (latest) {
+    latest.summary = summary;
+    latest.plainSummary = text.replace(/\s+/g, ' ').trim();
+    saveEntries(getEntries());
+    const result = await updateRemoteSummary(latest.id, summary);
+    if (result.error) return showToast(`บันทึกการแก้ไขไม่ได้: ${result.error.message}`);
+  }
+  box.innerHTML = summary;
+  box.contentEditable = 'false';
+  box.classList.remove('is-editing');
+  resultEditing = false;
+  $('editBtn').textContent = 'แก้ไขสรุป';
+  renderStats();
+  showToast('แก้ไขสรุปและบันทึกแล้ว');
+});
 $('themeBtn').addEventListener('click', () => document.body.classList.toggle('dark'));
 document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') $('summarizeBtn').click(); });
 
