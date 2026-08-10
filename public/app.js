@@ -17,6 +17,7 @@ const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (char) => 
 const formatWorkDate = (value) => new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00`));
 const plainToHtml = (value) => String(value || '').split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('') || '<p>ยังไม่มีข้อความ</p>';
 const htmlToText = (value) => { const container = document.createElement('div'); container.innerHTML = value || ''; return container.innerText.trim(); };
+const getStyleExamples = () => getEntries().filter((entry) => entry.rating).sort((a, b) => b.rating - a.rating).slice(0, 5).map((entry) => ({ rating: entry.rating, format: entry.format || 'report', text: htmlToText(entry.summary || entry.plainSummary).slice(0, 700) }));
 
 function showToast(message) {
   const el = $('toast');
@@ -95,6 +96,7 @@ async function loadRemoteEntries() {
     title: `สรุปการทำงาน · ${formatWorkDate(row.work_date)}`,
     plainSummary: (row.ai_summary || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
     summary: row.ai_summary || '',
+    rating: row.ai_rating || null,
     workDate: row.work_date,
     workText: row.work_text || '',
     blockerText: row.blocker_text || '',
@@ -145,6 +147,11 @@ async function updateRemoteSummary(id, summary) {
   return await supabaseClient.from('work_logs').update({ ai_summary: summary }).eq('id', id).eq('user_id', supabaseUser.id);
 }
 
+async function updateRemoteRating(id, rating) {
+  if (!id || !supabaseClient || !supabaseUser) return { error: null };
+  return await supabaseClient.from('work_logs').update({ ai_rating: rating }).eq('id', id).eq('user_id', supabaseUser.id);
+}
+
 async function deleteRemoteEntry(id) {
   if (!id || !supabaseClient || !supabaseUser) return { error: null };
   return await supabaseClient.from('work_logs').delete().eq('id', id).eq('user_id', supabaseUser.id).select('id');
@@ -159,7 +166,7 @@ async function requestSummary(work, blocker, next, voice, format, category) {
   const response = await fetch('/api/summarize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ work, blocker, next, voice, format, category }),
+    body: JSON.stringify({ work, blocker, next, voice, format, category, styleExamples: getStyleExamples() }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
@@ -171,7 +178,7 @@ async function requestWeeklySummary(entries, voice) {
   const response = await fetch('/api/summarize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: 'weekly', voice, format: 'report', category: 'สรุปประจำสัปดาห์', entries }),
+    body: JSON.stringify({ mode: 'weekly', voice, format: 'report', category: 'สรุปประจำสัปดาห์', entries, styleExamples: getStyleExamples() }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
@@ -228,6 +235,32 @@ function renderWeeklyResult(entry) {
   $('weeklySavedTime').textContent = `บันทึกเมื่อ ${new Date(entry.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+function ratingStars(rating = null) {
+  return [1, 2, 3, 4, 5].map((value) => `<button type="button" class="rating-star ${value <= (rating || 0) ? 'is-selected' : ''}" data-rating="${value}" aria-label="${value} ดาว">★</button>`).join('');
+}
+
+function bindRating(container, getEntry) {
+  container?.querySelectorAll('.rating-star').forEach((button) => button.addEventListener('click', async () => {
+    const entry = getEntry();
+    if (!entry) return showToast('ยังไม่มีสรุปให้รีวิว');
+    const rating = Number(button.dataset.rating);
+    const result = await updateRemoteRating(entry.id, rating);
+    if (result.error) return showToast(`บันทึกคะแนนไม่ได้: ${result.error.message}`);
+    entry.rating = rating;
+    saveEntries(getEntries());
+    renderResultRating(entry.rating);
+    if ($('historyView').style.display !== 'none') renderHistory();
+    showToast(`บันทึกคะแนน ${rating}/5 แล้ว ระบบจะนำไปปรับสำนวนครั้งถัดไป`);
+  }));
+}
+
+function renderResultRating(rating = null) {
+  const container = $('resultRating');
+  if (!container) return;
+  container.querySelector('.rating-stars').innerHTML = ratingStars(rating);
+  bindRating(container, () => getEntries()[0]);
+}
+
 function renderHistory() {
   const labels = { report: 'บทรายงาน', speech: 'บทพูด', chat: 'ภาษาพูด', bullet: 'สรุปเป็นข้อ' };
   const entries = getEntries().filter((entry) =>
@@ -235,9 +268,11 @@ function renderHistory() {
     && (historyCategory === 'all' || entry.category === historyCategory),
   );
   $('historyList').innerHTML = entries.length
-    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-copy" type="button">คัดลอก</button><button class="history-edit" type="button">แก้ไข</button><button class="history-delete" type="button">ลบ</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-editor hidden"><textarea>${escapeHtml(entry.plainSummary)}</textarea><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-save" type="button">บันทึกการแก้ไข</button></div></div></article>`).join('')
+    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-copy" type="button">คัดลอก</button><button class="history-edit" type="button">แก้ไข</button><button class="history-delete" type="button">ลบ</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-rating"><span>รีวิวสำนวน</span><div class="rating-stars">${ratingStars(entry.rating)}</div></div><div class="history-editor hidden"><textarea>${escapeHtml(entry.plainSummary)}</textarea><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-save" type="button">บันทึกการแก้ไข</button></div></div></article>`).join('')
     : '<div class="history-empty">ยังไม่มีประวัติที่ตรงกับตัวกรองนี้</div>';
   document.querySelectorAll('.history-item').forEach((item) => {
+    const entryForRating = () => getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
+    bindRating(item.querySelector('.history-rating'), entryForRating);
     const copyButton = item.querySelector('.history-copy');
     const editButton = item.querySelector('.history-edit');
     const editor = item.querySelector('.history-editor');
@@ -329,6 +364,7 @@ $('todayLabel').textContent = thaiDate.format(today);
 $('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
 setCurrentWeek();
 renderStats();
+renderResultRating(getEntries()[0]?.rating || null);
 
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
 document.querySelectorAll('.history-filter').forEach((button) => button.addEventListener('click', () => {
@@ -379,6 +415,7 @@ $('summarizeBtn').addEventListener('click', async () => {
     localEntry.id = savedRow.id;
     saveEntries(entries.slice(0, 30));
   }
+  renderResultRating(localEntry.rating || null);
   if (!error) {
     $('workInput').value = '';
     $('blockerInput').value = '';
@@ -404,13 +441,13 @@ $('weeklySummarizeBtn').addEventListener('click', async () => {
     const summary = await requestWeeklySummary(logs.map((entry) => ({ date: entry.workDate || entry.createdAt.slice(0, 10), category: entry.category || 'ทั่วไป', work: entry.workText || entry.plainSummary, blocker: entry.blockerText || '', next: entry.nextText || '' })), $('voiceMode').value);
     const weeklyEntry = { start, end, summary, createdAt: new Date().toISOString() };
     const { data: savedRow, error } = await saveWeeklyToSupabase(start, end, summary);
-    if (error) throw error;
+    if (error && !/weekly_summaries|schema cache|relation/i.test(error.message || '')) throw error;
     if (savedRow?.id) weeklyEntry.id = savedRow.id;
     const weeklyEntries = getWeeklyEntries();
     weeklyEntries.unshift(weeklyEntry);
     saveWeeklyEntries(weeklyEntries.slice(0, 12));
     renderWeeklyResult(weeklyEntry);
-    showToast('สรุปรายสัปดาห์และบันทึกเรียบร้อยแล้ว');
+    showToast(error ? 'สรุปแล้ว แต่ยังไม่ได้บันทึกถาวร · รัน migration weekly_summaries ใน Supabase' : 'สรุปรายสัปดาห์และบันทึกเรียบร้อยแล้ว');
   } catch (error) {
     showToast(`สรุปรายสัปดาห์ไม่ได้: ${error.message}`);
   }
