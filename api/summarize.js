@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'GEMINI_API_KEY is not configured' });
   try {
-    const { work = '', blocker = '', next = '', voice = 'neutral', format = 'report' } = req.body || {};
+    const { work = '', blocker = '', next = '', voice = 'neutral', format = 'report', category = 'ทั่วไป' } = req.body || {};
     const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
     const voiceGuide = { neutral: 'ใช้สรรพนามกลาง สุภาพ เป็นธรรมชาติ ไม่ต้องเน้นเพศ', female: 'เขียนด้วยน้ำเสียงผู้หญิง ใช้สรรพนาม “หนู” ได้เมื่อเหมาะสม และลงท้ายด้วย “ค่ะ” หรือ “นะคะ” อย่างพอดี น้ำเสียงสุภาพกึ่งทางการ ไม่สนิทหรืออ้อนเกินไป', male: 'เขียนด้วยน้ำเสียงผู้ชาย ใช้สรรพนาม “ผม” และลงท้ายด้วย “ครับ” อย่างพอดี น้ำเสียงสุภาพกึ่งทางการ ไม่แข็งหรือเป็นทางการเกินไป' }[voice] || 'ใช้สรรพนามกลาง สุภาพ เป็นธรรมชาติ';
     const formatGuide = { report: 'จัดเป็นบทรายงานสำหรับส่งหัวหน้า มีหัวข้อชัดเจนและภาษาสุภาพกึ่งทางการ', speech: 'จัดเป็นบทพูดที่อ่านออกเสียงได้ลื่นไหล สุภาพ มีประโยคเปิดและปิดพอดี ไม่ใช้คำสนิทเกินไป', chat: 'เขียนเหมือนเล่าให้เพื่อนร่วมงานฟังด้วยภาษาพูดสุภาพกึ่งทางการ ไม่แข็งเป็นรายงานและไม่คุยเล่น', bullet: 'สรุปเป็นข้อสั้น ๆ ชัดเจน เหมาะสำหรับอ่านเร็ว ใช้ภาษางานที่สุภาพ' }[format] || 'จัดเป็นบทรายงานสำหรับส่งหัวหน้า';
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: `${instructions}\n\nสไตล์ที่ผู้ใช้เลือก:\n${styleInstructions}` }] },
-        contents: [{ role: 'user', parts: [{ text: `งานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}` }] }],
+        contents: [{ role: 'user', parts: [{ text: `หมวดงาน: ${category}\n\nงานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}` }] }],
       }),
     });
     const data = await response.json();
