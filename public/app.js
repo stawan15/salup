@@ -139,7 +139,7 @@ async function updateRemoteSummary(id, summary) {
 
 async function deleteRemoteEntry(id) {
   if (!id || !supabaseClient || !supabaseUser) return { error: null };
-  return await supabaseClient.from('work_logs').delete().eq('id', id).eq('user_id', supabaseUser.id);
+  return await supabaseClient.from('work_logs').delete().eq('id', id).eq('user_id', supabaseUser.id).select('id');
 }
 
 async function requestSummary(work, blocker, next, voice, format, category) {
@@ -204,6 +204,7 @@ function renderHistory() {
       if (!entry || !window.confirm('ลบสรุปนี้ออกจากประวัติใช่ไหม?')) return;
       const result = await deleteRemoteEntry(entry.id);
       if (result.error) return showToast(`ลบสรุปไม่ได้: ${result.error.message}`);
+      if (entry.id && (!result.data || result.data.length === 0)) return showToast('ลบไม่สำเร็จ: Supabase ยังไม่มีสิทธิ์ DELETE สำหรับบัญชีนี้');
       saveEntries(getEntries().filter((candidate) => candidate.createdAt !== entry.createdAt));
       renderStats();
       renderHistory();
