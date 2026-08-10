@@ -13,7 +13,6 @@ export default async function handler(req, res) {
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       instructions,
       input: `งานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}`,
-      text: { verbosity: 'low' },
     });
     return res.status(200).json({ summary: response.output_text });
   } catch (error) {
