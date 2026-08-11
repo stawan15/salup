@@ -1,6 +1,7 @@
 const STORAGE_KEY = 'worklog-ai-entries';
 const WEEKLY_STORAGE_KEY = 'worklog-ai-weekly-entries';
 const DRAFT_KEY = 'worklog-ai-draft';
+const REMINDER_KEY = 'worklog-ai-reminder';
 let supabaseClient = null;
 let supabaseUser = null;
 let authMode = 'login';
@@ -22,6 +23,36 @@ const formatWorkDate = (value) => new Intl.DateTimeFormat('th-TH', { day: 'numer
 const plainToHtml = (value) => String(value || '').split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('') || '<p>ยังไม่มีข้อความ</p>';
 const htmlToText = (value) => { const container = document.createElement('div'); container.innerHTML = value || ''; return container.innerText.trim(); };
 const getStyleExamples = () => getEntries().filter((entry) => entry.rating).sort((a, b) => b.rating - a.rating).slice(0, 5).map((entry) => ({ rating: entry.rating, feedback: entry.feedback || '', format: entry.format || 'report', text: htmlToText(entry.summary || entry.plainSummary).slice(0, 700) }));
+const getReminder = () => readStorage(REMINDER_KEY);
+
+function initReminder() {
+  const reminder = getReminder();
+  $('reminderEnabled').checked = Boolean(reminder.enabled);
+  $('reminderTime').value = reminder.time || '17:00';
+}
+
+async function saveReminder() {
+  const enabled = $('reminderEnabled').checked;
+  if (enabled && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+  localStorage.setItem(REMINDER_KEY, JSON.stringify({ enabled, time: $('reminderTime').value, lastNotified: getReminder().lastNotified || '' }));
+  $('reminderPanel').classList.add('hidden');
+  showToast(enabled ? 'เปิดการเตือนแล้ว · ทำงานเมื่อเปิดเว็บอยู่' : 'ปิดการเตือนแล้ว');
+  checkReminder();
+}
+
+function checkReminder() {
+  const reminder = getReminder();
+  if (!reminder.enabled) return;
+  const now = new Date();
+  if (![2, 4].includes(now.getDay())) return;
+  const todayKey = localDateString(now);
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  if (currentTime < (reminder.time || '17:00') || reminder.lastNotified === todayKey) return;
+  const nextReminder = { ...reminder, lastNotified: todayKey };
+  localStorage.setItem(REMINDER_KEY, JSON.stringify(nextReminder));
+  if ('Notification' in window && Notification.permission === 'granted') new Notification('น้องโน้ตเตือนแล้ว', { body: 'ถึงเวลาบันทึกและสรุปงานวันนี้แล้วครับ' });
+  else showToast('ถึงเวลาบันทึกและสรุปงานวันนี้แล้วครับ');
+}
 
 function saveDraft() {
   const draft = { work: $('workInput').value, blocker: $('blockerInput').value, next: $('nextInput').value, category: $('categoryMode').value, voice: $('voiceMode').value, format: $('outputMode').value };
@@ -178,6 +209,11 @@ async function updateRemoteSummary(id, summary) {
   return await supabaseClient.from('work_logs').update({ ai_summary: summary }).eq('id', id).eq('user_id', supabaseUser.id);
 }
 
+async function updateRemoteEntry(id, { work, blocker, next, summary }) {
+  if (!id || !supabaseClient || !supabaseUser) return { error: null };
+  return await supabaseClient.from('work_logs').update({ work_text: work, blocker_text: blocker || null, next_text: next || null, ai_summary: summary }).eq('id', id).eq('user_id', supabaseUser.id);
+}
+
 async function updateRemoteRating(id, rating, feedback) {
   if (!id || !supabaseClient || !supabaseUser) return { error: null };
   const result = await supabaseClient.from('work_logs').update({ ai_rating: rating, ai_feedback: feedback || null }).eq('id', id).eq('user_id', supabaseUser.id);
@@ -225,6 +261,16 @@ function renderStats() {
   const entries = getEntries();
   $('totalCount').innerHTML = `${entries.length} <small>ครั้ง</small>`;
   $('weekCount').innerHTML = `${entries.filter((entry) => (Date.now() - new Date(entry.createdAt)) < 7 * 86400000).length} <small>ครั้ง</small>`;
+  renderInsights(entries);
+}
+
+function renderInsights(entries = getEntries()) {
+  const categoryCounts = Object.entries(entries.reduce((counts, entry) => { const key = entry.category || 'ทั่วไป'; counts[key] = (counts[key] || 0) + 1; return counts; }, {})).sort((a, b) => b[1] - a[1]);
+  const blockers = entries.flatMap((entry) => (entry.blockerText || '').split(/\n+/).map((text) => text.trim()).filter((text) => text && text !== 'ไม่มี'));
+  const average = entries.filter((entry) => entry.rating).reduce((sum, entry, _index, rated) => sum + entry.rating / rated.length, 0);
+  $('topCategoryInsight').textContent = categoryCounts.length ? `${categoryCounts[0][0]} · ${categoryCounts[0][1]} ครั้ง` : 'ยังไม่มีข้อมูล';
+  $('averageRatingInsight').textContent = average ? `${average.toFixed(1)} / 5 ดาว` : 'ยังไม่มีคะแนน';
+  $('blockerInsight').textContent = blockers[0] ? (blockers[0].length > 28 ? `${blockers[0].slice(0, 28)}…` : blockers[0]) : 'ยังไม่มีข้อมูล';
 }
 
 function localDateString(date) {
@@ -323,7 +369,7 @@ function renderHistory() {
     && (!historySearch || `${entry.title} ${entry.plainSummary} ${entry.category || ''}`.toLowerCase().includes(historySearch)),
   );
   $('historyList').innerHTML = entries.length
-    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-copy" type="button">คัดลอก</button><button class="history-edit" type="button">แก้ไข</button><button class="history-delete" type="button">ลบ</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-rating"><span>รีวิวสำนวน</span><div class="rating-stars">${ratingStars(entry.rating)}</div><select class="feedback-select" aria-label="เหตุผลของคะแนน"><option value="">เหตุผล</option><option value="เป็นธรรมชาติ" ${entry.feedback === 'เป็นธรรมชาติ' ? 'selected' : ''}>เป็นธรรมชาติ</option><option value="กระชับดี" ${entry.feedback === 'กระชับดี' ? 'selected' : ''}>กระชับดี</option><option value="เหมาะกับงาน" ${entry.feedback === 'เหมาะกับงาน' ? 'selected' : ''}>เหมาะกับงาน</option><option value="ทางการเกินไป" ${entry.feedback === 'ทางการเกินไป' ? 'selected' : ''}>ทางการเกินไป</option><option value="ยาวเกินไป" ${entry.feedback === 'ยาวเกินไป' ? 'selected' : ''}>ยาวเกินไป</option><option value="ใช้คำซ้ำ" ${entry.feedback === 'ใช้คำซ้ำ' ? 'selected' : ''}>ใช้คำซ้ำ</option></select></div><div class="history-editor hidden"><textarea>${escapeHtml(entry.plainSummary)}</textarea><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-save" type="button">บันทึกการแก้ไข</button></div></div></article>`).join('')
+    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-copy" type="button">คัดลอก</button><button class="history-edit" type="button">แก้ไข</button><button class="history-delete" type="button">ลบ</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-rating"><span>รีวิวสำนวน</span><div class="rating-stars">${ratingStars(entry.rating)}</div><select class="feedback-select" aria-label="เหตุผลของคะแนน"><option value="">เหตุผล</option><option value="เป็นธรรมชาติ" ${entry.feedback === 'เป็นธรรมชาติ' ? 'selected' : ''}>เป็นธรรมชาติ</option><option value="กระชับดี" ${entry.feedback === 'กระชับดี' ? 'selected' : ''}>กระชับดี</option><option value="เหมาะกับงาน" ${entry.feedback === 'เหมาะกับงาน' ? 'selected' : ''}>เหมาะกับงาน</option><option value="ทางการเกินไป" ${entry.feedback === 'ทางการเกินไป' ? 'selected' : ''}>ทางการเกินไป</option><option value="ยาวเกินไป" ${entry.feedback === 'ยาวเกินไป' ? 'selected' : ''}>ยาวเกินไป</option><option value="ใช้คำซ้ำ" ${entry.feedback === 'ใช้คำซ้ำ' ? 'selected' : ''}>ใช้คำซ้ำ</option></select></div><div class="history-editor hidden"><label class="editor-field"><span>งานต้นฉบับ</span><textarea class="source-work">${escapeHtml(entry.workText || '')}</textarea></label><label class="editor-field"><span>สิ่งที่ติดขัด</span><textarea class="source-blocker">${escapeHtml(entry.blockerText || '')}</textarea></label><label class="editor-field"><span>งานถัดไป</span><textarea class="source-next">${escapeHtml(entry.nextText || '')}</textarea></label><label class="editor-field"><span>หรือแก้สรุปโดยตรง</span><textarea class="source-summary">${escapeHtml(entry.plainSummary)}</textarea></label><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-regenerate" type="button">สร้างสรุปใหม่จากต้นฉบับ</button><button class="history-save" type="button">บันทึกข้อความนี้</button></div></div></article>`).join('')
     : '<div class="history-empty">ยังไม่มีประวัติที่ตรงกับตัวกรองนี้</div>';
   document.querySelectorAll('.history-item').forEach((item) => {
     const entryForRating = () => getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
@@ -355,7 +401,7 @@ function renderHistory() {
     item.querySelector('.history-save')?.addEventListener('click', async () => {
       const entry = getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
       if (!entry) return;
-      const text = editor.querySelector('textarea').value.trim();
+      const text = editor.querySelector('.source-summary').value.trim();
       if (!text) return showToast('สรุปต้องมีข้อความอย่างน้อย 1 บรรทัด');
       const summary = plainToHtml(text);
       const result = await updateRemoteSummary(entry.id, summary);
@@ -365,6 +411,32 @@ function renderHistory() {
       saveEntries(getEntries());
       renderHistory();
       showToast('แก้ไขสรุปและบันทึกแล้ว');
+    });
+    item.querySelector('.history-regenerate')?.addEventListener('click', async () => {
+      const entry = getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
+      if (!entry) return;
+      const work = editor.querySelector('.source-work').value.trim();
+      if (!work) return showToast('กรุณาใส่งานต้นฉบับก่อนสร้างใหม่');
+      const regenerateButton = item.querySelector('.history-regenerate');
+      regenerateButton.disabled = true;
+      regenerateButton.textContent = 'กำลังสร้างใหม่...';
+      try {
+        const summary = await requestSummary(work, editor.querySelector('.source-blocker').value.trim(), editor.querySelector('.source-next').value.trim(), entry.voice || 'neutral', entry.format || 'report', entry.category || 'ทั่วไป');
+        const result = await updateRemoteEntry(entry.id, { work, blocker: editor.querySelector('.source-blocker').value.trim(), next: editor.querySelector('.source-next').value.trim(), summary });
+        if (result.error) throw result.error;
+        entry.workText = work;
+        entry.blockerText = editor.querySelector('.source-blocker').value.trim();
+        entry.nextText = editor.querySelector('.source-next').value.trim();
+        entry.summary = summary;
+        entry.plainSummary = htmlToText(summary);
+        saveEntries(getEntries());
+        renderHistory();
+        showToast('สร้างสรุปใหม่จากต้นฉบับแล้ว');
+      } catch (error) {
+        showToast(`สร้างใหม่ไม่ได้: ${error.message}`);
+      }
+      regenerateButton.disabled = false;
+      regenerateButton.textContent = 'สร้างสรุปใหม่จากต้นฉบับ';
     });
     item.querySelector('.history-delete')?.addEventListener('click', async () => {
       const entry = getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
@@ -391,6 +463,12 @@ function switchView(view) {
 }
 
 $('authToggle').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'signup' : 'login'));
+$('forgotPasswordBtn').addEventListener('click', async () => {
+  const email = $('authEmail').value.trim();
+  if (!email) return showToast('กรุณากรอกอีเมลก่อนขอเปลี่ยนรหัสผ่าน');
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+  $('authMessage').textContent = error ? error.message : 'ส่งลิงก์เปลี่ยนรหัสผ่านไปที่อีเมลแล้ว';
+});
 $('authForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('authSubmit');
@@ -436,6 +514,9 @@ renderResultRating(getEntries()[0]?.rating || null);
 renderWeeklyHistory();
 renderLearningStatus();
 restoreDraft();
+initReminder();
+checkReminder();
+setInterval(checkReminder, 60000);
 
 document.querySelectorAll('#workInput, #blockerInput, #nextInput, #categoryMode, #voiceMode, #outputMode').forEach((field) => {
   field.addEventListener('input', saveDraft);
@@ -443,6 +524,8 @@ document.querySelectorAll('#workInput, #blockerInput, #nextInput, #categoryMode,
 });
 
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
+$('reminderBtn').addEventListener('click', () => $('reminderPanel').classList.toggle('hidden'));
+$('saveReminderBtn').addEventListener('click', saveReminder);
 document.querySelectorAll('.history-filter').forEach((button) => button.addEventListener('click', () => {
   historyFormat = button.dataset.format;
   document.querySelectorAll('.history-filter').forEach((item) => item.classList.toggle('active', item === button));
@@ -466,6 +549,60 @@ $('exportHistoryBtn').addEventListener('click', () => {
   link.click();
   URL.revokeObjectURL(url);
   showToast('ส่งออกประวัติแล้ว');
+});
+$('importHistoryBtn').addEventListener('click', () => $('importHistoryInput').click());
+$('importHistoryInput').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const payload = JSON.parse(await file.text());
+    if (!Array.isArray(payload.daily) || !Array.isArray(payload.weekly)) throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');
+    if (!window.confirm('นำเข้าข้อมูลนี้รวมกับประวัติในเครื่องใช่ไหม?')) return;
+    const existing = getEntries();
+    const importedDaily = payload.daily.map(({ id, ...entry }) => entry);
+    const importedWeekly = payload.weekly.map(({ id, ...entry }) => entry);
+    const merged = [...existing, ...importedDaily].filter((entry, index, all) => all.findIndex((item) => item.createdAt === entry.createdAt) === index).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    saveEntries(merged.slice(0, 100));
+    saveWeeklyEntries([...getWeeklyEntries(), ...importedWeekly].filter((entry, index, all) => all.findIndex((item) => item.createdAt === entry.createdAt) === index).slice(0, 50));
+    renderStats();
+    renderHistory();
+    renderWeeklyHistory();
+    showToast('นำเข้าข้อมูลในเครื่องแล้ว · ข้อมูลเดิมบน Supabase ไม่ถูกเขียนทับ');
+  } catch (error) {
+    showToast(`นำเข้าไม่ได้: ${error.message}`);
+  } finally {
+    event.target.value = '';
+  }
+});
+function exportText() {
+  const entries = getEntries();
+  if (!entries.length) { showToast('ยังไม่มีประวัติให้ส่งออก'); return ''; }
+  return entries.map((entry) => `## ${entry.title}\n\n${htmlToText(entry.summary || entry.plainSummary)}\n`).join('\n');
+}
+function downloadFile(name, content, type) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([content], { type }));
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+$('exportMarkdownBtn').addEventListener('click', () => {
+  const text = exportText();
+  if (text) { downloadFile(`worklog-${localDateString(new Date())}.md`, text, 'text/markdown;charset=utf-8'); showToast('ส่งออก Markdown แล้ว'); }
+});
+$('exportWordBtn').addEventListener('click', () => {
+  const text = exportText();
+  if (text) { const html = `<html><meta charset="utf-8"><body style="font-family:Sarabun,Arial">${text.split('\n').map((line) => line.startsWith('## ') ? `<h2>${escapeHtml(line.slice(3))}</h2>` : `<p>${escapeHtml(line)}</p>`).join('')}</body></html>`; downloadFile(`worklog-${localDateString(new Date())}.doc`, html, 'application/msword'); showToast('ส่งออก Word แล้ว'); }
+});
+$('exportPdfBtn').addEventListener('click', () => {
+  const text = exportText();
+  if (!text) return;
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return showToast('เปิดหน้าต่าง PDF ไม่ได้ กรุณาอนุญาต popup');
+  printWindow.document.write(`<html><meta charset="utf-8"><title>Worklog</title><body style="font-family:Sarabun,Arial;line-height:1.8;max-width:800px;margin:40px auto">${text.split('\n').map((line) => line.startsWith('## ') ? `<h2>${escapeHtml(line.slice(3))}</h2>` : `<p>${escapeHtml(line)}</p>`).join('')}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 300);
 });
 $('weekStart').addEventListener('change', renderWeeklySource);
 $('weekEnd').addEventListener('change', renderWeeklySource);
