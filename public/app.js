@@ -154,7 +154,11 @@ async function updateRemoteSummary(id, summary) {
 
 async function updateRemoteRating(id, rating, feedback) {
   if (!id || !supabaseClient || !supabaseUser) return { error: null };
-  return await supabaseClient.from('work_logs').update({ ai_rating: rating, ai_feedback: feedback || null }).eq('id', id).eq('user_id', supabaseUser.id);
+  const result = await supabaseClient.from('work_logs').update({ ai_rating: rating, ai_feedback: feedback || null }).eq('id', id).eq('user_id', supabaseUser.id);
+  if (result.error && /ai_feedback.*column|schema cache/i.test(result.error.message || '')) {
+    return await supabaseClient.from('work_logs').update({ ai_rating: rating }).eq('id', id).eq('user_id', supabaseUser.id);
+  }
+  return result;
 }
 
 async function deleteRemoteEntry(id) {
