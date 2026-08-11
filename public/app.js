@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'worklog-ai-entries';
 const WEEKLY_STORAGE_KEY = 'worklog-ai-weekly-entries';
+const DRAFT_KEY = 'worklog-ai-draft';
 let supabaseClient = null;
 let supabaseUser = null;
 let authMode = 'login';
@@ -21,6 +22,30 @@ const formatWorkDate = (value) => new Intl.DateTimeFormat('th-TH', { day: 'numer
 const plainToHtml = (value) => String(value || '').split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('') || '<p>ยังไม่มีข้อความ</p>';
 const htmlToText = (value) => { const container = document.createElement('div'); container.innerHTML = value || ''; return container.innerText.trim(); };
 const getStyleExamples = () => getEntries().filter((entry) => entry.rating).sort((a, b) => b.rating - a.rating).slice(0, 5).map((entry) => ({ rating: entry.rating, feedback: entry.feedback || '', format: entry.format || 'report', text: htmlToText(entry.summary || entry.plainSummary).slice(0, 700) }));
+
+function saveDraft() {
+  const draft = { work: $('workInput').value, blocker: $('blockerInput').value, next: $('nextInput').value, category: $('categoryMode').value, voice: $('voiceMode').value, format: $('outputMode').value };
+  if (draft.work || draft.blocker || draft.next) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  else localStorage.removeItem(DRAFT_KEY);
+  $('draftStatus').innerHTML = '<span class="status-dot"></span> ร่างถูกเก็บไว้ในเครื่อง';
+}
+
+function restoreDraft() {
+  const draft = readStorage(DRAFT_KEY);
+  if (!draft.work && !draft.blocker && !draft.next) return;
+  $('workInput').value = draft.work || '';
+  $('blockerInput').value = draft.blocker || '';
+  $('nextInput').value = draft.next || '';
+  if (draft.category) $('categoryMode').value = draft.category;
+  if (draft.voice) $('voiceMode').value = draft.voice;
+  if (draft.format) $('outputMode').value = draft.format;
+  $('draftStatus').innerHTML = '<span class="status-dot"></span> กู้คืนร่างล่าสุดแล้ว';
+}
+
+function renderLearningStatus() {
+  const count = getEntries().filter((entry) => entry.rating).length;
+  $('learningStatus').textContent = count ? `มี feedback ให้ AI แล้ว ${count} ครั้ง · รีเฟรชแล้วไม่หาย` : 'ประวัติอยู่ในบัญชี · โควตาตาม Gemini';
+}
 
 function showToast(message) {
   const el = $('toast');
@@ -114,6 +139,7 @@ async function loadRemoteEntries() {
   renderHistory();
   renderWeeklySource();
   renderWeeklyHistory();
+  renderLearningStatus();
 }
 
 async function refreshRemoteEntries() {
@@ -273,6 +299,7 @@ function bindRating(container, getEntry) {
     entry.rating = rating;
     entry.feedback = feedback;
     saveEntries(getEntries());
+    renderLearningStatus();
     renderResultRating(entry.rating);
     if ($('historyView').style.display !== 'none') renderHistory();
     showToast(`บันทึกคะแนน ${rating}/5 แล้ว ระบบจะนำไปปรับสำนวนครั้งถัดไป`);
@@ -407,6 +434,13 @@ setCurrentWeek();
 renderStats();
 renderResultRating(getEntries()[0]?.rating || null);
 renderWeeklyHistory();
+renderLearningStatus();
+restoreDraft();
+
+document.querySelectorAll('#workInput, #blockerInput, #nextInput, #categoryMode, #voiceMode, #outputMode').forEach((field) => {
+  field.addEventListener('input', saveDraft);
+  field.addEventListener('change', saveDraft);
+});
 
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
 document.querySelectorAll('.history-filter').forEach((button) => button.addEventListener('click', () => {
@@ -421,6 +455,17 @@ $('historyCategory').addEventListener('change', (event) => {
 $('historySearch').addEventListener('input', (event) => {
   historySearch = event.target.value.trim().toLowerCase();
   renderHistory();
+});
+$('exportHistoryBtn').addEventListener('click', () => {
+  const payload = { exportedAt: new Date().toISOString(), daily: getEntries(), weekly: getWeeklyEntries() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `worklog-${localDateString(new Date())}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('ส่งออกประวัติแล้ว');
 });
 $('weekStart').addEventListener('change', renderWeeklySource);
 $('weekEnd').addEventListener('change', renderWeeklySource);
@@ -473,6 +518,8 @@ $('summarizeBtn').addEventListener('click', async () => {
   $('workInput').value = '';
   $('blockerInput').value = '';
   $('nextInput').value = '';
+  localStorage.removeItem(DRAFT_KEY);
+  $('draftStatus').innerHTML = '<span class="status-dot"></span> พร้อมรับบันทึกใหม่';
   renderStats();
   $('savedTime').textContent = `บันทึกเมื่อ ${new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`;
   button.disabled = false;
@@ -501,7 +548,10 @@ $('retrySaveBtn').addEventListener('click', async () => {
   $('workInput').value = '';
   $('blockerInput').value = '';
   $('nextInput').value = '';
+  localStorage.removeItem(DRAFT_KEY);
+  $('draftStatus').innerHTML = '<span class="status-dot"></span> พร้อมรับบันทึกใหม่';
   renderStats();
+  renderLearningStatus();
   showToast('บันทึกงานสำเร็จแล้ว');
 });
 
