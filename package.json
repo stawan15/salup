@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node scripts/local-server.mjs",
-    "dev": "vite --host 0.0.0.0",
+    "dev": "node scripts/dev.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --check public/app.js && node --check api/summarize.js && node --check api/config.js && node --check scripts/local-server.mjs"

@@ -4,7 +4,23 @@
 
 ## ลองใช้ทันที
 
-เปิด `public/index.html` ใน browser ได้เลย เว็บจะบันทึกประวัติใน `localStorage` และใช้โหมดสาธิตเมื่อยังไม่ได้ตั้งค่า API
+ติดตั้ง dependencies ก่อน แล้วใช้ Vite สำหรับโหมดพัฒนา:
+
+```bash
+npm install
+npm run dev
+```
+
+จากนั้นเปิด http://localhost:5173 โหมดนี้จะเปิดทั้ง Vite และ local API server ให้พร้อมกัน โดย Vite จะ proxy `/api` ไปที่ API server อัตโนมัติ
+
+ถ้าต้องการรัน local server แบบเดิม ให้ใช้ `npm start` แล้วเปิด http://localhost:4173
+
+สำหรับตรวจ production bundle ใช้:
+
+```bash
+npm test
+npm run build
+```
 
 ## เปิดใช้ AI จริง
 
