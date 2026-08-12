@@ -18,6 +18,7 @@ import {
 import { createAiClient } from './modules/ai.js';
 import { createDataClient } from './modules/data.js';
 import { createRatingController } from './modules/rating.js';
+import { filterHistoryEntries, renderHistoryMarkup } from './modules/history.js';
 
 let supabaseClient = null;
 let supabaseUser = null;
@@ -273,15 +274,8 @@ function renderWeeklyHistory() {
 }
 
 function renderHistory() {
-  const labels = { report: 'บทรายงาน', speech: 'บทพูด', chat: 'ภาษาพูด', bullet: 'สรุปเป็นข้อ' };
-  const entries = getEntries().filter((entry) =>
-    (historyFormat === 'all' || entry.format === historyFormat)
-    && (historyCategory === 'all' || entry.category === historyCategory)
-    && (!historySearch || `${entry.title} ${entry.plainSummary} ${entry.category || ''}`.toLowerCase().includes(historySearch)),
-  );
-  $('historyList').innerHTML = entries.length
-    ? entries.map((entry) => `<article class="history-item" data-entry-key="${escapeHtml(entry.createdAt)}"><div class="history-item-top"><time>${escapeHtml(entry.title)}</time><div class="history-item-actions"><div class="history-tags"><span>${escapeHtml(labels[entry.format] || 'บทรายงาน')}</span><span>${escapeHtml(entry.category || 'ทั่วไป')}</span></div><button class="history-copy" type="button">คัดลอก</button><button class="history-edit" type="button">แก้ไข</button><button class="history-delete" type="button">ลบ</button></div></div><p class="history-preview">${escapeHtml(entry.plainSummary)}</p><div class="history-rating"><span>รีวิวสำนวน</span><div class="rating-stars">${ratingStars(entry.rating)}</div><select class="feedback-select" aria-label="เหตุผลของคะแนน"><option value="">เหตุผล</option><option value="เป็นธรรมชาติ" ${entry.feedback === 'เป็นธรรมชาติ' ? 'selected' : ''}>เป็นธรรมชาติ</option><option value="กระชับดี" ${entry.feedback === 'กระชับดี' ? 'selected' : ''}>กระชับดี</option><option value="เหมาะกับงาน" ${entry.feedback === 'เหมาะกับงาน' ? 'selected' : ''}>เหมาะกับงาน</option><option value="ทางการเกินไป" ${entry.feedback === 'ทางการเกินไป' ? 'selected' : ''}>ทางการเกินไป</option><option value="ยาวเกินไป" ${entry.feedback === 'ยาวเกินไป' ? 'selected' : ''}>ยาวเกินไป</option><option value="ใช้คำซ้ำ" ${entry.feedback === 'ใช้คำซ้ำ' ? 'selected' : ''}>ใช้คำซ้ำ</option></select></div><div class="history-editor hidden"><label class="editor-field"><span>งานต้นฉบับ</span><textarea class="source-work">${escapeHtml(entry.workText || '')}</textarea></label><label class="editor-field"><span>สิ่งที่ติดขัด</span><textarea class="source-blocker">${escapeHtml(entry.blockerText || '')}</textarea></label><label class="editor-field"><span>งานถัดไป</span><textarea class="source-next">${escapeHtml(entry.nextText || '')}</textarea></label><label class="editor-field"><span>หรือแก้สรุปโดยตรง</span><textarea class="source-summary">${escapeHtml(entry.plainSummary)}</textarea></label><div><button class="history-cancel" type="button">ยกเลิก</button><button class="history-regenerate" type="button">สร้างสรุปใหม่จากต้นฉบับ</button><button class="history-save" type="button">บันทึกข้อความนี้</button></div></div></article>`).join('')
-    : '<div class="history-empty">ยังไม่มีประวัติที่ตรงกับตัวกรองนี้</div>';
+  const entries = filterHistoryEntries(getEntries(), { format: historyFormat, category: historyCategory, search: historySearch });
+  $('historyList').innerHTML = renderHistoryMarkup(entries, ratingStars);
   document.querySelectorAll('.history-item').forEach((item) => {
     const entryForRating = () => getEntries().find((candidate) => candidate.createdAt === item.dataset.entryKey);
     bindRating(item.querySelector('.history-rating'), entryForRating);
