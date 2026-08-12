@@ -402,6 +402,17 @@ function paintRating(container, rating = null, preview = false) {
   });
 }
 
+function persistRating(entry, rating, feedback) {
+  const updated = { ...entry, rating, feedback };
+  saveEntries(getEntries().map((candidate) => (
+    (candidate.id && entry.id && candidate.id === entry.id) || candidate.createdAt === entry.createdAt
+      ? { ...candidate, rating, feedback }
+      : candidate
+  )));
+  if (entry === currentResultEntry || (currentResultEntry?.id && entry.id && currentResultEntry.id === entry.id)) currentResultEntry = updated;
+  return updated;
+}
+
 function bindRating(container, getEntry) {
   if (!container) return;
   const stars = container.querySelector('.rating-stars');
@@ -424,12 +435,10 @@ function bindRating(container, getEntry) {
       paintRating(container, previousRating);
       return showToast(`บันทึกคะแนนไม่ได้: ${result.error.message}`);
     }
-    entry.rating = rating;
-    entry.feedback = feedback;
-    saveEntries(getEntries());
+    const updatedEntry = persistRating(entry, rating, feedback);
     renderLearningStatus();
-    if (entry === currentResultEntry) renderResultRating(rating, true);
-    if (container.closest('.history-item')) renderHistory();
+    if (entry === currentResultEntry) renderResultRating(updatedEntry.rating, true);
+    if (container.closest('.history-item') || $('historyView').style.display !== 'none') renderHistory();
     showToast(`บันทึกคะแนน ${rating}/5 แล้ว ระบบจะนำไปปรับสำนวนครั้งถัดไป`);
   }));
 }
@@ -476,8 +485,7 @@ function renderHistory() {
       if (!entry || !entry.rating) return showToast('ให้คะแนนก่อนเลือกเหตุผลนะครับ');
       const result = await updateRemoteRating(entry.id, entry.rating, event.target.value);
       if (result.error) return showToast(`บันทึก feedback ไม่ได้: ${result.error.message}`);
-      entry.feedback = event.target.value;
-      saveEntries(getEntries());
+      persistRating(entry, entry.rating, event.target.value);
       showToast('บันทึก feedback แล้ว');
     });
     const copyButton = item.querySelector('.history-copy');
