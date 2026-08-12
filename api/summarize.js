@@ -1,3 +1,6 @@
+import { createRateLimiter, getClientKey, validateSummaryInput } from './summarize-utils.js';
+
+const limiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 const instructions = `คุณเป็นผู้ช่วยส่วนตัวที่ช่วยเรียบเรียงบันทึกงานของคนจริง ๆ ไม่ใช่เครื่องสร้างรายงานสำเร็จรูป
 
 เขียนภาษาไทยให้เป็นธรรมชาติ มีจังหวะและน้ำหนักของภาษาเหมือนคนที่เข้าใจเรื่องนั้นจริง ใช้คำเชื่อมที่เหมาะกับบริบท และเลือกเก็บเฉพาะรายละเอียดที่ทำให้คนอ่านเห็นภาพ ห้ามเปิดทุกคำตอบด้วยประโยคเดิม ห้ามใช้คำฟุ่มเฟือยหรือคำราชการเกินจำเป็น ห้ามแต่งข้อมูล ชื่อ จำนวน หรือสถานะที่ผู้ใช้ไม่ได้ให้มา
@@ -17,7 +20,14 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'GEMINI_API_KEY is not configured' });
   try {
-    const { mode = 'daily', work = '', blocker = '', next = '', voice = 'neutral', format = 'report', category = 'ทั่วไป', entries = [], styleExamples = [] } = req.body || {};
+    const rate = limiter.check(getClientKey(req));
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfter));
+      return res.status(429).json({ error: 'เรียกใช้งานถี่เกินไป กรุณารอสักครู่แล้วลองใหม่' });
+    }
+    const validated = validateSummaryInput(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    const { mode = 'daily', work = '', blocker = '', next = '', voice = 'neutral', format = 'report', category = 'ทั่วไป', entries = [], styleExamples = [] } = validated.value;
     const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
     const voiceGuide = { neutral: 'ใช้สรรพนามกลาง สุภาพ เป็นธรรมชาติ ไม่ต้องเน้นเพศ', female: 'เขียนด้วยน้ำเสียงผู้หญิง ใช้สรรพนาม “หนู” ได้เมื่อเหมาะสม และลงท้ายด้วย “ค่ะ” หรือ “นะคะ” อย่างพอดี น้ำเสียงสุภาพกึ่งทางการ ไม่สนิทหรืออ้อนเกินไป', male: 'เขียนด้วยน้ำเสียงผู้ชาย ใช้สรรพนาม “ผม” และลงท้ายด้วย “ครับ” อย่างพอดี น้ำเสียงสุภาพกึ่งทางการ ไม่แข็งหรือเป็นทางการเกินไป' }[voice] || 'ใช้สรรพนามกลาง สุภาพ เป็นธรรมชาติ';
     const formatGuide = { report: 'จัดเป็นบทรายงานสำหรับส่งหัวหน้า มีหัวข้อชัดเจนและภาษาสุภาพกึ่งทางการ', speech: 'จัดเป็นบทพูดที่อ่านออกเสียงได้ลื่นไหล สุภาพ มีประโยคเปิดและปิดพอดี ไม่ใช้คำสนิทเกินไป', chat: 'เขียนเหมือนเล่าให้เพื่อนร่วมงานฟังด้วยภาษาพูดสุภาพกึ่งทางการ ไม่แข็งเป็นรายงานและไม่คุยเล่น', bullet: 'สรุปเป็นข้อสั้น ๆ ชัดเจน เหมาะสำหรับอ่านเร็ว ใช้ภาษางานที่สุภาพ' }[format] || 'จัดเป็นบทรายงานสำหรับส่งหัวหน้า';
