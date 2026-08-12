@@ -10,6 +10,7 @@ let historyFormat = 'all';
 let historyCategory = 'all';
 let historySearch = '';
 let pendingDailySave = null;
+let currentResultEntry = null;
 
 const $ = (id) => document.getElementById(id);
 const readStorage = (key) => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (error) { localStorage.removeItem(key); return []; } };
@@ -388,35 +389,73 @@ function renderWeeklyHistory() {
   });
 }
 
-function ratingStars(rating = null) {
-  return [1, 2, 3, 4, 5].map((value) => `<button type="button" class="rating-star ${value <= (rating || 0) ? 'is-selected' : ''}" data-rating="${value}" aria-label="${value} ดาว">★</button>`).join('');
+function ratingStars(rating = null, enabled = true) {
+  return [1, 2, 3, 4, 5].map((value) => `<button type="button" class="rating-star ${value <= (rating || 0) ? 'is-selected' : ''}" data-rating="${value}" aria-label="${value} ดาว" aria-pressed="${value <= (rating || 0)}" ${enabled ? '' : 'disabled'}>★</button>`).join('');
+}
+
+function paintRating(container, rating = null, preview = false) {
+  container?.querySelectorAll('.rating-star').forEach((star) => {
+    const value = Number(star.dataset.rating);
+    star.classList.toggle('is-selected', value <= (rating || 0));
+    star.classList.toggle('is-preview', preview && value <= (rating || 0));
+    star.setAttribute('aria-pressed', String(value <= (rating || 0)));
+  });
 }
 
 function bindRating(container, getEntry) {
-  container?.querySelectorAll('.rating-star').forEach((button) => button.addEventListener('click', async () => {
+  if (!container) return;
+  const stars = container.querySelector('.rating-stars');
+  stars?.addEventListener('pointerover', (event) => {
+    const button = event.target.closest('.rating-star');
+    if (button && !button.disabled) paintRating(container, Number(button.dataset.rating), true);
+  });
+  stars?.addEventListener('pointerleave', () => paintRating(container, getEntry()?.rating || null));
+  container.querySelectorAll('.rating-star').forEach((button) => button.addEventListener('click', async () => {
     const entry = getEntry();
     if (!entry) return showToast('ยังไม่มีสรุปให้รีวิว');
     const rating = Number(button.dataset.rating);
+    const previousRating = entry.rating || null;
     const feedback = container.querySelector('.feedback-select')?.value || '';
+    paintRating(container, rating);
+    container.classList.add('is-saving');
     const result = await updateRemoteRating(entry.id, rating, feedback);
-    if (result.error) return showToast(`บันทึกคะแนนไม่ได้: ${result.error.message}`);
+    container.classList.remove('is-saving');
+    if (result.error) {
+      paintRating(container, previousRating);
+      return showToast(`บันทึกคะแนนไม่ได้: ${result.error.message}`);
+    }
     entry.rating = rating;
     entry.feedback = feedback;
     saveEntries(getEntries());
     renderLearningStatus();
-    renderResultRating(entry.rating);
-    if ($('historyView').style.display !== 'none') renderHistory();
+    if (entry === currentResultEntry) renderResultRating(rating, true);
+    if (container.closest('.history-item')) renderHistory();
     showToast(`บันทึกคะแนน ${rating}/5 แล้ว ระบบจะนำไปปรับสำนวนครั้งถัดไป`);
   }));
 }
 
-function renderResultRating(rating = null) {
+function renderResultRating(rating = null, hasResult = Boolean(currentResultEntry)) {
   const container = $('resultRating');
   if (!container) return;
-  const entry = getEntries()[0];
-  container.querySelector('.rating-stars').innerHTML = ratingStars(rating);
-  container.querySelector('.feedback-select').value = entry?.feedback || '';
-  bindRating(container, () => getEntries()[0]);
+  container.classList.toggle('is-disabled', !hasResult);
+  container.querySelector('.rating-stars').innerHTML = ratingStars(rating, hasResult);
+  const feedback = container.querySelector('.feedback-select');
+  feedback.value = currentResultEntry?.feedback || '';
+  feedback.disabled = !hasResult;
+  bindRating(container, () => currentResultEntry);
+}
+
+function resetCurrentResult() {
+  currentResultEntry = null;
+  resultEditing = false;
+  $('summaryBox').contentEditable = 'false';
+  $('summaryBox').classList.remove('is-editing');
+  $('summaryBox').innerHTML = '<div class="summary-placeholder">สรุปของวันนี้จะแสดงตรงนี้<br /><small>กรอกข้อมูลด้านบนแล้วกด “สรุปงาน”</small></div>';
+  $('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
+  $('savedTime').textContent = 'ยังไม่มีการสรุปวันนี้';
+  $('retrySaveBtn').classList.add('hidden');
+  $('editBtn').textContent = 'แก้ไขสรุป';
+  renderResultRating(null, false);
 }
 
 function renderHistory() {
@@ -568,7 +607,7 @@ $('todayLabel').textContent = thaiDate.format(today);
 $('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
 setCurrentWeek();
 renderStats();
-renderResultRating(getEntries()[0]?.rating || null);
+renderResultRating(null, false);
 renderWeeklyHistory();
 renderLearningStatus();
 restoreDraft();
@@ -695,6 +734,8 @@ $('summarizeBtn').addEventListener('click', async () => {
   const localEntry = { createdAt, title: `สรุปการทำงาน · ${thaiDate.format(today)}`, plainSummary, summary, category, voice, format, workDate: new Date().toISOString().slice(0, 10), workText: work, blockerText: blocker, nextText: next };
   const { data: savedRow, error } = await saveToSupabase({ work, blocker, next, summary, category, voice, format });
   if (error) {
+    currentResultEntry = null;
+    renderResultRating(null, false);
     pendingDailySave = localEntry;
     $('retrySaveBtn').classList.remove('hidden');
     $('savedTime').textContent = 'ยังบันทึกไม่สำเร็จ';
@@ -707,9 +748,10 @@ $('summarizeBtn').addEventListener('click', async () => {
   const entries = getEntries();
   entries.unshift(localEntry);
   saveEntries(entries.slice(0, 30));
+  currentResultEntry = localEntry;
   pendingDailySave = null;
   $('retrySaveBtn').classList.add('hidden');
-  renderResultRating(localEntry.rating || null);
+  renderResultRating(null, true);
   $('workInput').value = '';
   $('blockerInput').value = '';
   $('nextInput').value = '';
@@ -736,6 +778,7 @@ $('retrySaveBtn').addEventListener('click', async () => {
   }
   if (data?.id) draft.id = data.id;
   saveEntries([draft, ...getEntries()].slice(0, 30));
+  currentResultEntry = draft;
   pendingDailySave = null;
   button.classList.add('hidden');
   button.disabled = false;
@@ -747,6 +790,7 @@ $('retrySaveBtn').addEventListener('click', async () => {
   $('draftStatus').innerHTML = '<span class="status-dot"></span> พร้อมรับบันทึกใหม่';
   renderStats();
   renderLearningStatus();
+  renderResultRating(null, true);
   showToast('บันทึกงานสำเร็จแล้ว');
 });
 
@@ -792,6 +836,11 @@ $('copyBtn').addEventListener('click', async () => {
   showToast('คัดลอกสรุปแล้ว');
 });
 let resultEditing = false;
+$('resetResultBtn').addEventListener('click', () => {
+  if (!currentResultEntry && $('summaryBox').querySelector('.summary-placeholder')) return showToast('ยังไม่มีผลลัพธ์ให้ล้าง');
+  resetCurrentResult();
+  showToast('ล้างผลลัพธ์และคะแนนรีวิวแล้ว');
+});
 $('editBtn').addEventListener('click', async () => {
   const box = $('summaryBox');
   if (box.querySelector('.summary-placeholder')) return showToast('ยังไม่มีสรุปให้แก้ไข');
@@ -804,7 +853,7 @@ $('editBtn').addEventListener('click', async () => {
     return;
   }
   const text = box.innerText.trim();
-  const latest = getEntries()[0];
+  const latest = currentResultEntry;
   const summary = plainToHtml(text);
   if (latest) {
     latest.summary = summary;
