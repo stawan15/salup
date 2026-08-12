@@ -4,6 +4,11 @@ import { defineConfig } from 'vite';
 // Vite's build pipeline without changing the existing HTML/CSS/JS runtime.
 export default defineConfig({
   root: 'public',
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:4173',
+    },
+  },
   build: {
     outDir: '../dist',
     emptyOutDir: true,
