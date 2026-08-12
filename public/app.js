@@ -1,8 +1,22 @@
-const STORAGE_KEY = 'worklog-ai-entries';
-const WEEKLY_STORAGE_KEY = 'worklog-ai-weekly-entries';
-const DRAFT_KEY = 'worklog-ai-draft';
-const REMINDER_KEY = 'worklog-ai-reminder';
-const AI_USAGE_KEY = 'worklog-ai-usage';
+import {
+  AI_USAGE_KEY,
+  DRAFT_KEY,
+  getEntries,
+  getReminder,
+  getWeeklyEntries,
+  htmlToText,
+  escapeHtml,
+  formatWorkDate,
+  plainToHtml,
+  readStorage,
+  REMINDER_KEY,
+  saveEntries,
+  saveWeeklyEntries,
+  thaiDate,
+  today,
+  WEEKLY_STORAGE_KEY,
+} from './modules/core.js';
+
 let supabaseClient = null;
 let supabaseUser = null;
 let authMode = 'login';
@@ -13,19 +27,7 @@ let pendingDailySave = null;
 let currentResultEntry = null;
 
 const $ = (id) => document.getElementById(id);
-const readStorage = (key) => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (error) { localStorage.removeItem(key); return []; } };
-const getEntries = () => readStorage(STORAGE_KEY);
-const saveEntries = (entries) => localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-const getWeeklyEntries = () => readStorage(WEEKLY_STORAGE_KEY);
-const saveWeeklyEntries = (entries) => localStorage.setItem(WEEKLY_STORAGE_KEY, JSON.stringify(entries));
-const thaiDate = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long' });
-const today = new Date();
-const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
-const formatWorkDate = (value) => new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00`));
-const plainToHtml = (value) => String(value || '').split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('') || '<p>ยังไม่มีข้อความ</p>';
-const htmlToText = (value) => { const container = document.createElement('div'); container.innerHTML = value || ''; return container.innerText.trim(); };
 const getStyleExamples = () => getEntries().filter((entry) => entry.rating).sort((a, b) => b.rating - a.rating).slice(0, 5).map((entry) => ({ rating: entry.rating, feedback: entry.feedback || '', format: entry.format || 'report', text: htmlToText(entry.summary || entry.plainSummary).slice(0, 700) }));
-const getReminder = () => readStorage(REMINDER_KEY);
 
 function initReminder() {
   const reminder = getReminder();
