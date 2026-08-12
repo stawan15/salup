@@ -1,5 +1,4 @@
 import {
-  AI_USAGE_KEY,
   DRAFT_KEY,
   getEntries,
   getReminder,
@@ -16,6 +15,7 @@ import {
   today,
   WEEKLY_STORAGE_KEY,
 } from './modules/core.js';
+import { createAiClient } from './modules/ai.js';
 
 let supabaseClient = null;
 let supabaseUser = null;
@@ -28,6 +28,8 @@ let currentResultEntry = null;
 
 const $ = (id) => document.getElementById(id);
 const getStyleExamples = () => getEntries().filter((entry) => entry.rating).sort((a, b) => b.rating - a.rating).slice(0, 5).map((entry) => ({ rating: entry.rating, feedback: entry.feedback || '', format: entry.format || 'report', text: htmlToText(entry.summary || entry.plainSummary).slice(0, 700) }));
+const aiClient = createAiClient({ getStyleExamples, onUsageChange: renderLearningStatus });
+const { getAiUsage, requestSummary, requestWeeklySummary } = aiClient;
 
 function initReminder() {
   const reminder = getReminder();
@@ -81,23 +83,6 @@ function renderLearningStatus() {
   const count = getEntries().filter((entry) => entry.rating).length;
   const usage = getAiUsage();
   $('learningStatus').textContent = `${count ? `feedback ${count} ครั้ง` : 'ยังไม่มี feedback'} · ใช้ AI วันนี้ ${usage.count}/30`;
-}
-
-function getAiUsage() {
-  const todayKey = localDateString(new Date());
-  const usage = readStorage(AI_USAGE_KEY);
-  return usage.date === todayKey ? usage : { date: todayKey, count: 0 };
-}
-
-function recordAiUse() {
-  const usage = getAiUsage();
-  usage.count += 1;
-  localStorage.setItem(AI_USAGE_KEY, JSON.stringify(usage));
-  renderLearningStatus();
-}
-
-function assertAiAvailable() {
-  if (getAiUsage().count >= 30) throw new Error('วันนี้ใช้ AI ครบ 30 ครั้งแล้ว ลองใหม่พรุ่งนี้');
 }
 
 function showToast(message) {
@@ -263,34 +248,6 @@ async function updateWeeklySummary(id, summary) {
 async function deleteWeeklySummary(id) {
   if (!id || !supabaseClient || !supabaseUser) return { error: null };
   return await supabaseClient.from('weekly_summaries').delete().eq('id', id).eq('user_id', supabaseUser.id).select('id');
-}
-
-async function requestSummary(work, blocker, next, voice, format, category) {
-  assertAiAvailable();
-  const response = await fetch('/api/summarize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ work, blocker, next, voice, format, category, styleExamples: getStyleExamples() }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
-  if (!data.summary) throw new Error('Gemini ไม่ส่งผลลัพธ์กลับมา');
-  recordAiUse();
-  return data.summary;
-}
-
-async function requestWeeklySummary(entries, voice) {
-  assertAiAvailable();
-  const response = await fetch('/api/summarize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: 'weekly', voice, format: 'report', category: 'สรุปประจำสัปดาห์', entries, styleExamples: getStyleExamples() }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
-  if (!data.summary) throw new Error('Gemini ไม่ส่งผลลัพธ์กลับมา');
-  recordAiUse();
-  return data.summary;
 }
 
 function renderStats() {
