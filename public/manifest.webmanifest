@@ -1,0 +1,10 @@
+{
+  "name": "น้องโน้ต — Worklog Assistant",
+  "short_name": "น้องโน้ต",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff9f4",
+  "theme_color": "#e87968",
+  "lang": "th",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

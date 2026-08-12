@@ -1,1 +1,1 @@
-{"name":"worklog-ai","version":"1.0.0","type":"module","scripts":{"start":"node scripts/local-server.mjs"},"dependencies":{}}
+{"name":"worklog-ai","version":"1.0.0","type":"module","scripts":{"start":"node scripts/local-server.mjs","test":"node --check public/app.js && node --check api/summarize.js"},"dependencies":{}}

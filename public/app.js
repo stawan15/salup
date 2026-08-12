@@ -2,6 +2,7 @@ const STORAGE_KEY = 'worklog-ai-entries';
 const WEEKLY_STORAGE_KEY = 'worklog-ai-weekly-entries';
 const DRAFT_KEY = 'worklog-ai-draft';
 const REMINDER_KEY = 'worklog-ai-reminder';
+const AI_USAGE_KEY = 'worklog-ai-usage';
 let supabaseClient = null;
 let supabaseUser = null;
 let authMode = 'login';
@@ -75,7 +76,25 @@ function restoreDraft() {
 
 function renderLearningStatus() {
   const count = getEntries().filter((entry) => entry.rating).length;
-  $('learningStatus').textContent = count ? `มี feedback ให้ AI แล้ว ${count} ครั้ง · รีเฟรชแล้วไม่หาย` : 'ประวัติอยู่ในบัญชี · โควตาตาม Gemini';
+  const usage = getAiUsage();
+  $('learningStatus').textContent = `${count ? `feedback ${count} ครั้ง` : 'ยังไม่มี feedback'} · ใช้ AI วันนี้ ${usage.count}/30`;
+}
+
+function getAiUsage() {
+  const todayKey = localDateString(new Date());
+  const usage = readStorage(AI_USAGE_KEY);
+  return usage.date === todayKey ? usage : { date: todayKey, count: 0 };
+}
+
+function recordAiUse() {
+  const usage = getAiUsage();
+  usage.count += 1;
+  localStorage.setItem(AI_USAGE_KEY, JSON.stringify(usage));
+  renderLearningStatus();
+}
+
+function assertAiAvailable() {
+  if (getAiUsage().count >= 30) throw new Error('วันนี้ใช้ AI ครบ 30 ครั้งแล้ว ลองใหม่พรุ่งนี้');
 }
 
 function showToast(message) {
@@ -233,7 +252,18 @@ async function saveWeeklyToSupabase(start, end, summary) {
   return await supabaseClient.from('weekly_summaries').insert({ user_id: supabaseUser.id, week_start: start, week_end: end, ai_summary: summary }).select('id').single();
 }
 
+async function updateWeeklySummary(id, summary) {
+  if (!id || !supabaseClient || !supabaseUser) return { error: null };
+  return await supabaseClient.from('weekly_summaries').update({ ai_summary: summary }).eq('id', id).eq('user_id', supabaseUser.id);
+}
+
+async function deleteWeeklySummary(id) {
+  if (!id || !supabaseClient || !supabaseUser) return { error: null };
+  return await supabaseClient.from('weekly_summaries').delete().eq('id', id).eq('user_id', supabaseUser.id).select('id');
+}
+
 async function requestSummary(work, blocker, next, voice, format, category) {
+  assertAiAvailable();
   const response = await fetch('/api/summarize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -242,10 +272,12 @@ async function requestSummary(work, blocker, next, voice, format, category) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
   if (!data.summary) throw new Error('Gemini ไม่ส่งผลลัพธ์กลับมา');
+  recordAiUse();
   return data.summary;
 }
 
 async function requestWeeklySummary(entries, voice) {
+  assertAiAvailable();
   const response = await fetch('/api/summarize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -254,6 +286,7 @@ async function requestWeeklySummary(entries, voice) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
   if (!data.summary) throw new Error('Gemini ไม่ส่งผลลัพธ์กลับมา');
+  recordAiUse();
   return data.summary;
 }
 
@@ -321,13 +354,38 @@ function renderWeeklyHistory() {
   if (!list) return;
   const entries = getWeeklyEntries();
   list.innerHTML = entries.length
-    ? entries.map((entry, index) => `<article class="weekly-history-item"><div><strong>สัปดาห์ที่ ${formatWorkDate(entry.start)} – ${formatWorkDate(entry.end)}</strong><p>${escapeHtml(htmlToText(entry.summary).slice(0, 180))}...</p></div><button class="weekly-history-copy secondary-button" data-weekly-index="${index}" type="button">คัดลอก</button></article>`).join('')
+    ? entries.map((entry, index) => `<article class="weekly-history-item" data-weekly-index="${index}"><div class="weekly-history-content"><strong>สัปดาห์ที่ ${formatWorkDate(entry.start)} – ${formatWorkDate(entry.end)}</strong><p class="weekly-history-preview">${escapeHtml(htmlToText(entry.summary).slice(0, 180))}...</p><div class="weekly-history-editor hidden"><textarea>${escapeHtml(htmlToText(entry.summary))}</textarea><div><button class="weekly-cancel secondary-button" type="button">ยกเลิก</button><button class="weekly-save primary-button" type="button">บันทึก</button></div></div></div><div class="weekly-history-actions"><button class="weekly-history-copy secondary-button" type="button">คัดลอก</button><button class="weekly-edit secondary-button" type="button">แก้ไข</button><button class="weekly-delete history-delete" type="button">ลบ</button></div></article>`).join('')
     : '<div class="history-empty">ยังไม่มีสรุปรายสัปดาห์</div>';
   list.querySelectorAll('.weekly-history-copy').forEach((button) => button.addEventListener('click', async () => {
-    const entry = entries[Number(button.dataset.weeklyIndex)];
+    const entry = entries[Number(button.closest('.weekly-history-item').dataset.weeklyIndex)];
     await navigator.clipboard.writeText(htmlToText(entry.summary));
     showToast('คัดลอกสรุปรายสัปดาห์แล้ว');
   }));
+  list.querySelectorAll('.weekly-history-item').forEach((item) => {
+    const entry = entries[Number(item.dataset.weeklyIndex)];
+    const editor = item.querySelector('.weekly-history-editor');
+    item.querySelector('.weekly-edit').addEventListener('click', () => { editor.classList.remove('hidden'); item.querySelector('.weekly-edit').classList.add('hidden'); });
+    item.querySelector('.weekly-cancel').addEventListener('click', () => { editor.classList.add('hidden'); item.querySelector('.weekly-edit').classList.remove('hidden'); });
+    item.querySelector('.weekly-save').addEventListener('click', async () => {
+      const text = editor.querySelector('textarea').value.trim();
+      if (!text) return showToast('สรุปต้องมีข้อความ');
+      const result = await updateWeeklySummary(entry.id, plainToHtml(text));
+      if (result.error) return showToast(`แก้ไขไม่ได้: ${result.error.message}`);
+      entry.summary = plainToHtml(text);
+      saveWeeklyEntries(entries);
+      renderWeeklyHistory();
+      showToast('แก้ไขสรุปรายสัปดาห์แล้ว');
+    });
+    item.querySelector('.weekly-delete').addEventListener('click', async () => {
+      if (!window.confirm('ลบสรุปรายสัปดาห์นี้ใช่ไหม?')) return;
+      const result = await deleteWeeklySummary(entry.id);
+      if (result.error) return showToast(`ลบไม่ได้: ${result.error.message}`);
+      if (entry.id && (!result.data || result.data.length === 0)) return showToast('ลบไม่ได้: ยังไม่มีสิทธิ์ DELETE');
+      saveWeeklyEntries(entries.filter((candidate) => candidate.createdAt !== entry.createdAt));
+      renderWeeklyHistory();
+      showToast('ลบสรุปรายสัปดาห์แล้ว');
+    });
+  });
 }
 
 function ratingStars(rating = null) {
@@ -764,6 +822,20 @@ $('editBtn').addEventListener('click', async () => {
   showToast('แก้ไขสรุปและบันทึกแล้ว');
 });
 $('themeBtn').addEventListener('click', () => document.body.classList.toggle('dark'));
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  $('installBtn').classList.remove('hidden');
+});
+$('installBtn').addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  $('installBtn').classList.add('hidden');
+});
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') $('summarizeBtn').click(); });
 
 initSupabase();

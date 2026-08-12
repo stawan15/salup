@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#e87968" />
   </head>
   <body>
     <section class="auth-screen" id="authScreen">
@@ -41,7 +43,7 @@
       </aside>
 
       <main class="main-content">
-        <header class="topbar"><div><div class="eyebrow" id="todayLabel">วันอังคาร · 10 สิงหาคม 2569</div><h1>สรุปงานของคุณ</h1><p class="subtitle">เก็บสิ่งที่ทำวันนี้ให้พร้อมทบทวนและส่งต่อ</p></div><div class="top-actions"><button class="secondary-button" id="reminderBtn" type="button">ตั้งเตือน</button><button class="icon-button" id="themeBtn" title="สลับธีม">◐</button></div></header>
+        <header class="topbar"><div><div class="eyebrow" id="todayLabel">วันอังคาร · 10 สิงหาคม 2569</div><h1>สรุปงานของคุณ</h1><p class="subtitle">เก็บสิ่งที่ทำวันนี้ให้พร้อมทบทวนและส่งต่อ</p></div><div class="top-actions"><button class="secondary-button hidden" id="installBtn" type="button">ติดตั้งแอป</button><button class="secondary-button" id="reminderBtn" type="button">ตั้งเตือน</button><button class="icon-button" id="themeBtn" title="สลับธีม">◐</button></div></header>
         <section class="reminder-panel hidden" id="reminderPanel"><div><strong>เตือนวันสรุปงาน</strong><p>แจ้งเตือนบนอุปกรณ์เมื่อเปิดเว็บในวันอังคารและพฤหัสบดี</p></div><label class="reminder-toggle"><input id="reminderEnabled" type="checkbox" /> เปิดการเตือน</label><label class="field"><span>เวลาเตือน</span><input id="reminderTime" type="time" value="17:00" /></label><button class="primary-button" id="saveReminderBtn" type="button">บันทึก</button></section>
         <section class="stats-row"><div class="stat-card"><div><div class="stat-label">สรุปทั้งหมด</div><div class="stat-value" id="totalCount">0 <small>ครั้ง</small></div></div><span class="stat-index">01</span></div><div class="stat-card"><div><div class="stat-label">สัปดาห์นี้</div><div class="stat-value" id="weekCount">0 <small>ครั้ง</small></div></div><span class="stat-index green-text">02</span></div><div class="stat-card next-card"><div><div class="stat-label">รอบถัดไป</div><div class="stat-value">พฤหัสบดี</div><div class="stat-note">อีก 2 วัน</div></div><span class="stat-index orange-text">03</span></div></section>
         <section class="insight-row"><div class="insight-card"><span>หมวดที่ทำบ่อย</span><strong id="topCategoryInsight">ยังไม่มีข้อมูล</strong></div><div class="insight-card"><span>คะแนนสำนวนเฉลี่ย</span><strong id="averageRatingInsight">ยังไม่มีคะแนน</strong></div><div class="insight-card"><span>สิ่งที่ติดตามบ่อย</span><strong id="blockerInsight">ยังไม่มีข้อมูล</strong></div></section>
