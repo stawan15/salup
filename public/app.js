@@ -17,6 +17,7 @@ import {
 } from './modules/core.js';
 import { createAiClient } from './modules/ai.js';
 import { createDataClient } from './modules/data.js';
+import { createRatingController } from './modules/rating.js';
 
 let supabaseClient = null;
 let supabaseUser = null;
@@ -37,6 +38,22 @@ const dataClient = createDataClient({
   onRemoteLoaded: () => { renderStats(); renderHistory(); renderWeeklySource(); renderWeeklyHistory(); renderLearningStatus(); },
 });
 const { refreshRemoteEntries, saveToSupabase, updateRemoteSummary, updateRemoteEntry, updateRemoteRating, deleteRemoteEntry, saveWeeklyToSupabase, updateWeeklySummary, deleteWeeklySummary } = dataClient;
+const ratingController = createRatingController({
+  getEntries,
+  saveEntries,
+  updateRemoteRating,
+  getCurrentResult: () => currentResultEntry,
+  setCurrentResult: (entry) => { currentResultEntry = entry; },
+  renderHistory: () => renderHistory(),
+  renderLearningStatus: () => renderLearningStatus(),
+  showToast,
+  getElement: $,
+  getThaiDate: () => thaiDate,
+  getToday: () => today,
+  getResultEditing: () => resultEditing,
+  setResultEditing: (value) => { resultEditing = value; },
+});
+const { ratingStars, persistRating, bindRating, renderResultRating, resetCurrentResult } = ratingController;
 
 function initReminder() {
   const reminder = getReminder();
@@ -253,84 +270,6 @@ function renderWeeklyHistory() {
       showToast('ลบสรุปรายสัปดาห์แล้ว');
     });
   });
-}
-
-function ratingStars(rating = null, enabled = true) {
-  return [1, 2, 3, 4, 5].map((value) => `<button type="button" class="rating-star ${value <= (rating || 0) ? 'is-selected' : ''}" data-rating="${value}" aria-label="${value} ดาว" aria-pressed="${value <= (rating || 0)}" ${enabled ? '' : 'disabled'}>★</button>`).join('');
-}
-
-function paintRating(container, rating = null, preview = false) {
-  container?.querySelectorAll('.rating-star').forEach((star) => {
-    const value = Number(star.dataset.rating);
-    star.classList.toggle('is-selected', value <= (rating || 0));
-    star.classList.toggle('is-preview', preview && value <= (rating || 0));
-    star.setAttribute('aria-pressed', String(value <= (rating || 0)));
-  });
-}
-
-function persistRating(entry, rating, feedback) {
-  const updated = { ...entry, rating, feedback };
-  saveEntries(getEntries().map((candidate) => (
-    (candidate.id && entry.id && candidate.id === entry.id) || candidate.createdAt === entry.createdAt
-      ? { ...candidate, rating, feedback }
-      : candidate
-  )));
-  if (entry === currentResultEntry || (currentResultEntry?.id && entry.id && currentResultEntry.id === entry.id)) currentResultEntry = updated;
-  return updated;
-}
-
-function bindRating(container, getEntry) {
-  if (!container) return;
-  const stars = container.querySelector('.rating-stars');
-  stars?.addEventListener('pointerover', (event) => {
-    const button = event.target.closest('.rating-star');
-    if (button && !button.disabled) paintRating(container, Number(button.dataset.rating), true);
-  });
-  stars?.addEventListener('pointerleave', () => paintRating(container, getEntry()?.rating || null));
-  container.querySelectorAll('.rating-star').forEach((button) => button.addEventListener('click', async () => {
-    const entry = getEntry();
-    if (!entry) return showToast('ยังไม่มีสรุปให้รีวิว');
-    const rating = Number(button.dataset.rating);
-    const previousRating = entry.rating || null;
-    const feedback = container.querySelector('.feedback-select')?.value || '';
-    paintRating(container, rating);
-    container.classList.add('is-saving');
-    const result = await updateRemoteRating(entry.id, rating, feedback);
-    container.classList.remove('is-saving');
-    if (result.error) {
-      paintRating(container, previousRating);
-      return showToast(`บันทึกคะแนนไม่ได้: ${result.error.message}`);
-    }
-    const updatedEntry = persistRating(entry, rating, feedback);
-    renderLearningStatus();
-    if (entry === currentResultEntry) renderResultRating(updatedEntry.rating, true);
-    if (container.closest('.history-item') || $('historyView').style.display !== 'none') renderHistory();
-    showToast(`บันทึกคะแนน ${rating}/5 แล้ว ระบบจะนำไปปรับสำนวนครั้งถัดไป`);
-  }));
-}
-
-function renderResultRating(rating = null, hasResult = Boolean(currentResultEntry)) {
-  const container = $('resultRating');
-  if (!container) return;
-  container.classList.toggle('is-disabled', !hasResult);
-  container.querySelector('.rating-stars').innerHTML = ratingStars(rating, hasResult);
-  const feedback = container.querySelector('.feedback-select');
-  feedback.value = currentResultEntry?.feedback || '';
-  feedback.disabled = !hasResult;
-  bindRating(container, () => currentResultEntry);
-}
-
-function resetCurrentResult() {
-  currentResultEntry = null;
-  resultEditing = false;
-  $('summaryBox').contentEditable = 'false';
-  $('summaryBox').classList.remove('is-editing');
-  $('summaryBox').innerHTML = '<div class="summary-placeholder">สรุปของวันนี้จะแสดงตรงนี้<br /><small>กรอกข้อมูลด้านบนแล้วกด “สรุปงาน”</small></div>';
-  $('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
-  $('savedTime').textContent = 'ยังไม่มีการสรุปวันนี้';
-  $('retrySaveBtn').classList.add('hidden');
-  $('editBtn').textContent = 'แก้ไขสรุป';
-  renderResultRating(null, false);
 }
 
 function renderHistory() {
