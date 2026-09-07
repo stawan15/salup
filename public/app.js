@@ -1039,7 +1039,13 @@ $('editBtn').addEventListener('click', async () => {
   renderStats();
   showToast('แก้ไขสรุปและบันทึกแล้ว');
 });
-$('themeBtn').addEventListener('click', () => document.body.classList.toggle('dark'));
+const savedTheme = localStorage.getItem('worklog-theme');
+if (savedTheme === 'dark') document.body.classList.add('dark');
+else if (savedTheme === 'light') document.body.classList.remove('dark');
+$('themeBtn').addEventListener('click', () => {
+  const isDark = document.body.classList.toggle('dark');
+  localStorage.setItem('worklog-theme', isDark ? 'dark' : 'light');
+});
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
