@@ -57,7 +57,7 @@ function checkReminder() {
 }
 
 function saveDraft() {
-  const draft = { work: $('workInput').value, blocker: $('blockerInput').value, next: $('nextInput').value, category: $('categoryMode').value, voice: $('voiceMode').value, format: $('outputMode').value };
+  const draft = { work: $('workInput').value, blocker: $('blockerInput').value, next: $('nextInput').value, category: $('categoryMode').value, voice: $('voiceMode').value, format: $('outputMode').value, workDate: $('workDate')?.value || '' };
   if (draft.work || draft.blocker || draft.next) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   else localStorage.removeItem(DRAFT_KEY);
   $('draftStatus').innerHTML = '<span class="status-dot"></span> ร่างถูกเก็บไว้ในเครื่อง';
@@ -72,6 +72,7 @@ function restoreDraft() {
   if (draft.category) $('categoryMode').value = draft.category;
   if (draft.voice) $('voiceMode').value = draft.voice;
   if (draft.format) $('outputMode').value = draft.format;
+  if (draft.workDate && $('workDate')) { $('workDate').value = draft.workDate; if (typeof updateDateLabel === 'function') updateDateLabel(); }
   $('draftStatus').innerHTML = '<span class="status-dot"></span> กู้คืนร่างล่าสุดแล้ว';
 }
 
@@ -201,11 +202,11 @@ async function refreshRemoteEntries() {
   }
 }
 
-async function saveToSupabase({ work, blocker, next, summary, category, voice, format }) {
+async function saveToSupabase({ work, blocker, next, summary, category, voice, format, workDate }) {
   if (!supabaseClient || !supabaseUser) return { error: new Error('ยังไม่ได้เข้าสู่ระบบ') };
   const baseRecord = {
     user_id: supabaseUser.id,
-    work_date: new Date().toISOString().slice(0, 10),
+    work_date: workDate || new Date().toISOString().slice(0, 10),
     work_text: work,
     blocker_text: blocker || null,
     next_text: next || null,
@@ -460,7 +461,7 @@ function resetCurrentResult() {
   $('summaryBox').contentEditable = 'false';
   $('summaryBox').classList.remove('is-editing');
   $('summaryBox').innerHTML = '<div class="summary-placeholder">สรุปของวันนี้จะแสดงตรงนี้<br /><small>กรอกข้อมูลด้านบนแล้วกด “สรุปงาน”</small></div>';
-  $('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
+  $('resultTitle').textContent = `สรุปการทำงาน · ${formatWorkDate(getSelectedWorkDate())}`;
   $('savedTime').textContent = 'ยังไม่มีการสรุปวันนี้';
   $('retrySaveBtn').classList.add('hidden');
   $('editBtn').textContent = 'แก้ไขสรุป';
@@ -610,9 +611,21 @@ $('logoutBtn').addEventListener('click', async () => {
   setAuthMode('login');
 });
 
-$('dateLabel').textContent = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(today);
+function getSelectedWorkDate() {
+  return $('workDate').value || localDateString(new Date());
+}
+function updateDateLabel() {
+  const selected = getSelectedWorkDate();
+  const date = new Date(`${selected}T00:00:00`);
+  $('dateLabel').textContent = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+  const isToday = selected === localDateString(new Date());
+  $('resultTitle').textContent = `สรุปการทำงาน · ${isToday ? thaiDate.format(today) : formatWorkDate(selected)}`;
+}
+$('workDate').value = localDateString(today);
+$('workDate').max = localDateString(today);
+$('workDate').addEventListener('change', updateDateLabel);
+updateDateLabel();
 $('todayLabel').textContent = thaiDate.format(today);
-$('resultTitle').textContent = `สรุปการทำงาน · ${thaiDate.format(today)}`;
 setCurrentWeek();
 renderStats();
 renderResultRating(null, false);
@@ -623,7 +636,7 @@ initReminder();
 checkReminder();
 setInterval(checkReminder, 60000);
 
-document.querySelectorAll('#workInput, #blockerInput, #nextInput, #categoryMode, #voiceMode, #outputMode').forEach((field) => {
+document.querySelectorAll('#workInput, #blockerInput, #nextInput, #categoryMode, #voiceMode, #outputMode, #workDate').forEach((field) => {
   field.addEventListener('input', saveDraft);
   field.addEventListener('change', saveDraft);
 });
@@ -738,9 +751,10 @@ $('summarizeBtn').addEventListener('click', async () => {
   }
   $('summaryBox').innerHTML = summary;
   const plainSummary = summary.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const selectedDate = getSelectedWorkDate();
   const createdAt = new Date().toISOString();
-  const localEntry = { createdAt, title: `สรุปการทำงาน · ${thaiDate.format(today)}`, plainSummary, summary, category, voice, format, workDate: new Date().toISOString().slice(0, 10), workText: work, blockerText: blocker, nextText: next };
-  const { data: savedRow, error } = await saveToSupabase({ work, blocker, next, summary, category, voice, format });
+  const localEntry = { createdAt, title: `สรุปการทำงาน · ${formatWorkDate(selectedDate)}`, plainSummary, summary, category, voice, format, workDate: selectedDate, workText: work, blockerText: blocker, nextText: next };
+  const { data: savedRow, error } = await saveToSupabase({ work, blocker, next, summary, category, voice, format, workDate: selectedDate });
   if (error) {
     currentResultEntry = null;
     renderResultRating(null, false);
@@ -778,7 +792,7 @@ $('retrySaveBtn').addEventListener('click', async () => {
   button.disabled = true;
   button.textContent = 'กำลังบันทึก...';
   const draft = pendingDailySave;
-  const { data, error } = await saveToSupabase({ work: draft.workText, blocker: draft.blockerText, next: draft.nextText, summary: draft.summary, category: draft.category, voice: draft.voice, format: draft.format });
+  const { data, error } = await saveToSupabase({ work: draft.workText, blocker: draft.blockerText, next: draft.nextText, summary: draft.summary, category: draft.category, voice: draft.voice, format: draft.format, workDate: draft.workDate });
   if (error) {
     button.disabled = false;
     button.textContent = 'ลองบันทึกอีกครั้ง';
