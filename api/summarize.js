@@ -28,6 +28,36 @@ export default async function handler(req, res) {
       ? `ผู้ใช้เคยให้คะแนนตัวอย่างสำนวนต่อไปนี้ คะแนนสูงควรใช้เป็นสัญญาณเรื่องจังหวะภาษาและระดับความเป็นทางการเท่านั้น เหตุผลที่ผู้ใช้เลือกไว้ใช้เป็นแนวทางได้ ห้ามคัดลอกเนื้อหา ชื่อ หรือข้อเท็จจริงจากตัวอย่าง และอย่าพูดถึงคะแนนในการตอบ:\n${styleExamples.map((example) => `[${example.rating}/5 · ${example.format}${example.feedback ? ` · ${example.feedback}` : ''}] ${example.text}`).join('\n')}`
       : 'ยังไม่มีตัวอย่างจากการรีวิว ให้ยึดสไตล์ที่ผู้ใช้เลือกและข้อมูลปัจจุบันเป็นหลัก';
     const styleInstructions = `${voiceGuide}\n${formatGuide}\n${weeklyGuide}\n${feedbackGuide}\nห้ามเปลี่ยนข้อเท็จจริงหรือเติมข้อมูลที่ผู้ใช้ไม่ได้ให้มา`;
+    if (mode === 'coop') {
+      const inputText = entries.map((entry) => `วันที่ ${entry.date} · หมวด ${entry.category || 'ทั่วไป'}\nงาน: ${entry.work || 'ไม่ได้ระบุ'}\nสิ่งที่ติดขัด: ${entry.blocker || 'ไม่มี'}\nแผนงานถัดไป: ${entry.next || 'ไม่ได้ระบุ'}`).join('\n\n');
+      const coopInstructions = `คุณเป็นผู้ช่วยสร้างรายงานสหกิจ วิเคราะห์บันทึกงานรายวัน แล้วแยกข้อมูลออกเป็น 5 ส่วนตามรูปแบบ JSON ต่อไปนี้ ห้ามมี markdown (เช่น \`\`\`json) ให้ตอบมาเป็นแค่ JSON object ล้วนๆ:
+{
+  "summary": {
+    "assignment": "สรุปงานที่ได้รับมอบหมาย",
+    "performance": "ผลการปฏิบัติงานที่ทำสำเร็จ",
+    "problems": "ปัญหาและอุปสรรคที่พบ (ถ้าไม่มีให้เขียนว่า ไม่มี)",
+    "solutions": "วิธีการแก้ไขปัญหา (ถ้าไม่มีให้เขียนว่า ไม่มี)",
+    "daily": [
+      { "date": "วัน-เดือน-ปี", "activities": "รายละเอียดการปฏิบัติงานรายวัน" }
+    ]
+  }
+}
+ใช้ภาษาไทยทางการที่เหมาะสมกับเอกสารมหาวิทยาลัย`;
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: coopInstructions }] },
+          contents: [{ role: 'user', parts: [{ text: inputText }] }],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || 'Gemini API request failed');
+      const rawText = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
+      const cleanJson = rawText.replace(/```json\n?|\n?```/g, '').trim();
+      return res.status(200).json(JSON.parse(cleanJson));
+    }
+
     const inputText = mode === 'weekly'
       ? entries.map((entry) => `วันที่ ${entry.date} · หมวด ${entry.category || 'ทั่วไป'}\nงาน: ${entry.work || 'ไม่ได้ระบุ'}\nสิ่งที่ติดขัด: ${entry.blocker || 'ไม่มี'}\nแผนงานถัดไป: ${entry.next || 'ไม่ได้ระบุ'}`).join('\n\n')
       : `หมวดงาน: ${category}\n\nงานที่ทำวันนี้:\n${work}\n\nสิ่งที่ติดขัด:\n${blocker || 'ไม่มี'}\n\nแผนงานถัดไป:\n${next || 'ไม่ได้ระบุ'}`;

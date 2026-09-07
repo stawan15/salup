@@ -143,7 +143,7 @@ button { cursor: pointer; }
 @keyframes rating-pop { 0% { transform: scale(.82); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
 .feedback-select { height: 30px; border: 1px solid var(--line); border-radius: 7px; padding: 0 7px; background: var(--white); color: var(--muted); font-size: 11px; }
 .retry-button { border: 0; border-radius: 7px; padding: 4px 8px; background: var(--coral-soft); color: var(--coral-dark); font: 11px 'Sarabun'; }
-.history-view, .weekly-view { display: none; }
+.history-view, .weekly-view, .coop-view { display: none; }
 .export-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .history-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: -6px 0 18px; flex-wrap: wrap; }
 .history-filters { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -183,6 +183,21 @@ button { cursor: pointer; }
 .weekly-history-item p { max-width: 70ch; margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .weekly-history-content { min-width: 0; flex: 1; }.weekly-history-actions { display: flex; gap: 6px; flex-wrap: wrap; }.weekly-history-editor { margin-top: 10px; }.weekly-history-editor textarea { width: 100%; min-height: 130px; border: 1px solid var(--line); border-radius: 9px; padding: 10px; background: var(--input); color: var(--ink); line-height: 1.7; }.weekly-history-editor > div { display: flex; justify-content: flex-end; gap: 7px; margin-top: 7px; }.weekly-history-editor .primary-button { min-width: auto; padding: 6px 10px; font-size: 12px; }
 .main-footer { margin-top: 32px; color: #b2a8a3; text-align: center; font-size: 11px; }.toast { position: fixed; right: 24px; bottom: 24px; z-index: 5; max-width: min(560px, calc(100vw - 48px)); padding: 13px 16px; border-radius: 11px; background: #3e3a39; color: white; font-size: 13px; opacity: 0; pointer-events: none; transform: translateY(8px); transition: .2s; }.toast.show { opacity: 1; transform: translateY(0); }
+.coop-controls { display: grid; grid-template-columns: auto 1fr 1fr auto; align-items: end; gap: 14px; padding: 20px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
+.coop-controls .primary-button { height: 46px; white-space: nowrap; }
+.coop-controls input[type="number"] { width: 80px; }
+.coop-result { margin-top: 18px; padding: 28px 30px; border: 1px solid var(--line); border-radius: 18px; background: var(--white); box-shadow: var(--shadow); }
+.coop-section { margin-top: 24px; }
+.coop-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.coop-section-header span { font-weight: 600; color: var(--ink); font-size: 14px; }
+.coop-textarea { width: 100%; min-height: 100px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--input); color: var(--ink); font-size: 14px; line-height: 1.7; resize: vertical; outline: none; }
+.coop-textarea:focus { border-color: var(--coral); box-shadow: 0 0 0 3px var(--coral-soft); }
+.table-container { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+.coop-daily-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.coop-daily-table th { background: var(--paper); padding: 12px 14px; font-weight: 600; color: var(--ink); border-bottom: 1px solid var(--line); }
+.coop-daily-table td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.coop-daily-table tr:last-child td { border-bottom: none; }
+
 
 body.dark { --cream: #151918; --paper: #1c211f; --white: #232927; --ink: #f4f1ee; --muted: #b7b5ae; --line: #38413d; --coral: #ed8977; --coral-dark: #f0a092; --coral-soft: #3d2927; --mint: #1d352d; --green: #8bc6a3; --input: #1b211f; --soft-green: #203129; --soft-yellow: #332c20; --summary: #302624; --shadow: 0 14px 34px rgba(0, 0, 0, .2); }
 .dark .auth-card, .dark .auth-field input, .dark .field input, .dark .field textarea, .dark .field select, .dark .icon-button, .dark .secondary-button { background: var(--white); color: var(--ink); }

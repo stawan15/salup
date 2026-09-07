@@ -292,6 +292,20 @@ async function requestWeeklySummary(entries, voice) {
   return data.summary;
 }
 
+async function requestCoopSummary(entries) {
+  assertAiAvailable();
+  const response = await fetch('/api/summarize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'coop', entries }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Gemini API ยังไม่พร้อมใช้งาน');
+  if (!data.summary) throw new Error('Gemini ไม่ส่งผลลัพธ์กลับมา');
+  recordAiUse();
+  return data.summary;
+}
+
 function renderStats() {
   const entries = getEntries();
   $('totalCount').innerHTML = `${entries.length} <small>ครั้ง</small>`;
@@ -325,11 +339,25 @@ function setCurrentWeek() {
   end.setDate(start.getDate() + 6);
   $('weekStart').value = localDateString(start);
   $('weekEnd').value = localDateString(end);
+  if ($('coopStart') && $('coopEnd')) {
+    $('coopStart').value = localDateString(start);
+    $('coopEnd').value = localDateString(end);
+  }
 }
 
 function getWeekLogs() {
   const start = $('weekStart').value;
   const end = $('weekEnd').value;
+  return getEntries().filter((entry) => {
+    const date = entry.workDate || entry.createdAt?.slice(0, 10);
+    return date && date >= start && date <= end;
+  });
+}
+
+function getCoopLogs() {
+  if (!$('coopStart') || !$('coopEnd')) return [];
+  const start = $('coopStart').value;
+  const end = $('coopEnd').value;
   return getEntries().filter((entry) => {
     const date = entry.workDate || entry.createdAt?.slice(0, 10);
     return date && date >= start && date <= end;
@@ -342,6 +370,38 @@ function renderWeeklySource() {
   $('weeklySource').textContent = logs.length
     ? `พบ ${logs.length} บันทึกในช่วงวันที่เลือก · ระบบจะรวมงาน ปัญหา และแผนงานถัดไปให้`
     : 'ยังไม่พบบันทึกงานในช่วงวันที่เลือก';
+}
+
+function renderCoopSource() {
+  if (!$('coopSource')) return;
+  const logs = getCoopLogs();
+  $('coopSource').textContent = logs.length
+    ? `พบ ${logs.length} บันทึกในช่วงวันที่เลือก · พร้อมสร้างสรุปตามแบบฟอร์มสหกิจ`
+    : 'ยังไม่พบบันทึกงานในช่วงวันที่เลือก';
+}
+
+function renderCoopResult(summary, weekNum, start, end) {
+  if (!summary) return;
+  $('coopResultBlock').classList.remove('hidden');
+  $('coopResultTitle').textContent = `สรุปสัปดาห์ที่ ${weekNum} · ${formatWorkDate(start)} – ${formatWorkDate(end)}`;
+  $('coopAssignment').value = summary.assignment || '';
+  $('coopPerformance').value = summary.performance || '';
+  $('coopProblems').value = summary.problems || '';
+  $('coopSolutions').value = summary.solutions || '';
+
+  const tbody = $('coopDailyTable').querySelector('tbody');
+  if (tbody) {
+    if (Array.isArray(summary.daily) && summary.daily.length) {
+      tbody.innerHTML = summary.daily.map((row) => `
+        <tr>
+          <td style="white-space:nowrap;font-weight:500;">${escapeHtml(row.date)}</td>
+          <td>${escapeHtml(row.activities)}</td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--muted);">ไม่มีบันทึกรายวัน</td></tr>';
+    }
+  }
 }
 
 function renderWeeklyResult(entry) {
@@ -564,8 +624,10 @@ function switchView(view) {
   $('resultPanel').style.display = view === 'dashboard' ? 'block' : 'none';
   $('historyView').style.display = view === 'history' ? 'block' : 'none';
   $('weeklyView').style.display = view === 'weekly' ? 'block' : 'none';
+  if ($('coopView')) $('coopView').style.display = view === 'coop' ? 'block' : 'none';
   if (view === 'history') renderHistory();
   if (view === 'weekly') renderWeeklySource();
+  if (view === 'coop') renderCoopSource();
 }
 
 $('authToggle').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'signup' : 'login'));
@@ -850,6 +912,91 @@ $('weeklyCopyBtn').addEventListener('click', async () => {
   await navigator.clipboard.writeText(text);
   showToast('คัดลอกสรุปรายสัปดาห์แล้ว');
 });
+
+if ($('coopStart')) $('coopStart').addEventListener('change', renderCoopSource);
+if ($('coopEnd')) $('coopEnd').addEventListener('change', renderCoopSource);
+
+if ($('coopGenerateBtn')) {
+  $('coopGenerateBtn').addEventListener('click', async () => {
+    const weekNum = $('coopWeekNum').value || '1';
+    const start = $('coopStart').value;
+    const end = $('coopEnd').value;
+    const logs = getCoopLogs();
+    if (!start || !end || start > end) return showToast('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+    if (!logs.length) return showToast('ยังไม่มีบันทึกงานในช่วงวันที่เลือก');
+    const button = $('coopGenerateBtn');
+    button.disabled = true;
+    button.textContent = 'กำลังประมวลผล...';
+    try {
+      const summary = await requestCoopSummary(logs.map((entry) => ({
+        date: entry.workDate || entry.createdAt.slice(0, 10),
+        category: entry.category || 'ทั่วไป',
+        work: entry.workText || entry.plainSummary,
+        blocker: entry.blockerText || '',
+        next: entry.nextText || ''
+      })));
+      renderCoopResult(summary, weekNum, start, end);
+      showToast('สร้างรายงานสหกิจเรียบร้อยแล้ว');
+    } catch (error) {
+      showToast(`สร้างรายงานไม่ได้: ${error.message}`);
+    }
+    button.disabled = false;
+    button.innerHTML = 'สร้างรายงาน <span>→</span>';
+  });
+}
+
+document.querySelectorAll('.coop-copy-btn').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const targetId = btn.dataset.target;
+    let text = '';
+    if (targetId === 'coopDailyTable') {
+      const rows = Array.from($('coopDailyTable').querySelectorAll('tbody tr'));
+      text = rows.map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.innerText.trim()).join('\t')).join('\n');
+    } else {
+      const el = $(targetId);
+      text = el ? (el.value || el.innerText).trim() : '';
+    }
+    if (!text) return showToast('ไม่มีข้อความให้คัดลอก');
+    await navigator.clipboard.writeText(text);
+    showToast('คัดลอกข้อความแล้ว');
+  });
+});
+
+if ($('coopCopyAllBtn')) {
+  $('coopCopyAllBtn').addEventListener('click', async () => {
+    const weekNum = $('coopWeekNum').value || '1';
+    const start = $('coopStart').value;
+    const end = $('coopEnd').value;
+    const assignment = $('coopAssignment').value.trim();
+    const performance = $('coopPerformance').value.trim();
+    const problems = $('coopProblems').value.trim();
+    const solutions = $('coopSolutions').value.trim();
+    const rows = Array.from($('coopDailyTable').querySelectorAll('tbody tr'));
+    const dailyText = rows.map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.innerText.trim()).join(' : ')).join('\n');
+
+    const fullText = `ส่วนที่ 1 รายละเอียดการมอบหมายงานในสัปดาห์ที่ ${weekNum} ช่วงวันที่ ${formatWorkDate(start)} – ${formatWorkDate(end)}
+
+[งานที่ได้รับมอบหมาย]
+${assignment}
+
+[ผลการปฏิบัติงาน]
+${performance}
+
+[ปัญหาและอุปสรรค]
+${problems}
+
+[การแก้ไขปัญหา]
+${solutions}
+
+--------------------------------------------------
+รายละเอียดการปฏิบัติงานสหกิจศึกษา (รายวัน)
+วัน-เดือน-ปี : รายละเอียดการปฏิบัติงาน
+${dailyText}`;
+
+    await navigator.clipboard.writeText(fullText);
+    showToast('คัดลอกรายงานทั้งหมดแล้ว');
+  });
+}
 
 $('copyBtn').addEventListener('click', async () => {
   const text = $('summaryBox').innerText;
