@@ -125,7 +125,15 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
 .result-header { display: flex; align-items: flex-start; justify-content: space-between; }.result-header h2 { margin: 0; font-size: 20px; }.result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .secondary-button { border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; background: var(--white); color: var(--muted); font-size: 13px; }
 .secondary-button:hover { border-color: #e6b8ac; color: var(--coral-dark); }
-.summary-box { min-height: 125px; margin-top: 21px; padding: 19px 21px; border-left: 4px solid var(--coral); border-radius: 0 12px 12px 0; background: var(--summary); color: #514946; font-size: 14px; line-height: 1.8; }.summary-box h3 { margin: 0 0 6px; color: var(--coral-dark); font-size: 15px; }.summary-box p { margin: 0 0 13px; }.summary-placeholder { padding: 19px; color: #b3aaa5; text-align: center; }.summary-placeholder small { font-size: 12px; }
+.summary-box { min-height: 125px; margin-top: 21px; padding: 19px 21px; border-left: 4px solid var(--coral); border-radius: 0 12px 12px 0; background: var(--summary); color: #514946; font-size: 14px; line-height: 1.8; }
+.summary-box h3 { margin: 14px 0 8px; color: var(--coral-dark); font-size: 15px; font-weight: 700; }
+.summary-box h3:first-child { margin-top: 0; }
+.summary-box p { margin: 0 0 13px; }
+.summary-box ul { margin: 6px 0 14px 20px; padding: 0; list-style-type: disc; }
+.summary-box li { margin-bottom: 7px; line-height: 1.65; color: inherit; }
+.summary-box li:last-child { margin-bottom: 0; }
+.summary-placeholder { padding: 19px; color: #b3aaa5; text-align: center; }
+.summary-placeholder small { font-size: 12px; }
 .result-meta { display: flex; justify-content: space-between; margin-top: 13px; color: #aaa19b; font: 11px 'DM Sans'; }.result-meta span:first-child { color: var(--coral-dark); }
 .rating-row, .history-rating { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .rating-row { justify-content: flex-end; margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); }
