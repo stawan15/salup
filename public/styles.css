@@ -219,6 +219,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
 .coop-daily-table th { background: var(--paper); padding: 12px 14px; font-weight: 600; color: var(--ink); border-bottom: 1px solid var(--line); }
 .coop-daily-table td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .coop-daily-table tr:last-child td { border-bottom: none; }
+.app-version { position: fixed; right: 12px; bottom: 8px; z-index: 1; color: var(--muted); font: 11px 'DM Sans', sans-serif; pointer-events: none; }
 
 
 body.dark { color-scheme: dark; --cream: #151918; --paper: #1c211f; --white: #232927; --ink: #f4f1ee; --muted: #b7b5ae; --line: #38413d; --coral: #ed8977; --coral-dark: #f0a092; --coral-soft: #3d2927; --mint: #1d352d; --green: #8bc6a3; --input: #1b211f; --soft-green: #203129; --soft-yellow: #332c20; --summary: #302624; --shadow: 0 14px 34px rgba(0, 0, 0, .2); }
