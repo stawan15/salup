@@ -159,6 +159,21 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
 .history-toolbar select { height: 38px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; background: var(--white); color: var(--ink); font-size: 12px; }
 .history-search { width: min(280px, 100%); height: 38px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; background: var(--white); color: var(--ink); outline: none; font-size: 12px; }
 .history-search:focus { border-color: var(--coral); box-shadow: 0 0 0 3px var(--coral-soft); }
+.history-calendar { margin: 0 0 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cal-head button, .cal-filter button { min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--white); color: var(--muted); font-size: 18px; }
+.cal-head button:hover, .cal-filter button:hover { border-color: #e6b8ac; color: var(--coral-dark); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-dow { padding: 4px 0; color: var(--muted); text-align: center; font-size: 12px; }
+.cal-day { position: relative; min-height: 44px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--ink); font-size: 14px; }
+.cal-day:hover { background: var(--coral-soft); }
+.cal-day.is-today { border-color: var(--coral); font-weight: 700; }
+.cal-day.has-entry::after { content: ''; position: absolute; bottom: 6px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--green); }
+.cal-day[aria-pressed="true"] { background: var(--coral); color: #fff; }
+.cal-day[aria-pressed="true"]::after { background: #fff; }
+.cal-day:focus-visible, .cal-head button:focus-visible, .cal-filter button:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+.cal-filter { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 13px; }
+.cal-filter button { padding: 0 12px; font-size: 13px; }
 .history-list { display: grid; gap: 11px; }
 .history-item { padding: 20px 22px; border: 1px solid var(--line); border-radius: 15px; background: var(--white); }
 .history-item-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

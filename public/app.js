@@ -20,6 +20,9 @@ const getWeeklyEntries = () => readStorage(WEEKLY_STORAGE_KEY);
 const saveWeeklyEntries = (entries) => localStorage.setItem(WEEKLY_STORAGE_KEY, JSON.stringify(entries));
 const thaiDate = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long' });
 const today = new Date();
+let historyDate = '';
+let calendarMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+const entryDate = (entry) => entry.workDate || entry.createdAt?.slice(0, 10);
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 const formatWorkDate = (value) => new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00`));
 const plainToHtml = (value) => String(value || '').split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('') || '<p>ยังไม่มีข้อความ</p>';
@@ -528,10 +531,25 @@ function resetCurrentResult() {
   renderResultRating(null, false);
 }
 
+function renderHistoryCalendar() {
+  const counts = getEntries().reduce((map, entry) => { const date = entryDate(entry); if (date) map[date] = (map[date] || 0) + 1; return map; }, {});
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const weekdays = Array.from({ length: 7 }, (_, index) => `<span class="cal-dow">${new Intl.DateTimeFormat('th-TH', { weekday: 'short' }).format(new Date(2024, 0, 7 + index))}</span>`).join('');
+  const days = Array.from({ length: new Date(year, month + 1, 0).getDate() }, (_, index) => {
+    const key = localDateString(new Date(year, month, index + 1));
+    const count = counts[key] || 0;
+    return `<button type="button" class="cal-day${key === localDateString(today) ? ' is-today' : ''}${count ? ' has-entry' : ''}" data-date="${key}" aria-pressed="${key === historyDate}" aria-label="${formatWorkDate(key)}${count ? ` · ${count} บันทึก` : ''}">${index + 1}</button>`;
+  }).join('');
+  $('historyCalendar').innerHTML = `<div class="cal-head"><button type="button" data-nav="-1" aria-label="เดือนก่อนหน้า">‹</button><strong aria-live="polite">${new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(calendarMonth)}</strong><button type="button" data-nav="1" aria-label="เดือนถัดไป">›</button></div><div class="cal-grid">${weekdays}${'<span></span>'.repeat(new Date(year, month, 1).getDay())}${days}</div>${historyDate ? `<div class="cal-filter">แสดงเฉพาะ ${formatWorkDate(historyDate)}<button type="button" data-clear="1">ดูทั้งหมด</button></div>` : ''}`;
+}
+
 function renderHistory() {
-  const labels = { report: 'บทรายงาน', speech: 'บทพูด', chat: 'ภาษาพูด', bullet: 'สรุปเป็นข้อ' };
+  renderHistoryCalendar();
+  const labels = { report: 'บทรายงาน', speech: 'บทพูด', chat: 'ภาษาพูด', bullet: 'สรุปเป็นข้อ', progress: 'ความคืบหน้า' };
   const entries = getEntries().filter((entry) =>
-    (historyFormat === 'all' || entry.format === historyFormat)
+    (!historyDate || entryDate(entry) === historyDate)
+    && (historyFormat === 'all' || entry.format === historyFormat)
     && (historyCategory === 'all' || entry.category === historyCategory)
     && (!historySearch || `${entry.title} ${entry.plainSummary} ${entry.category || ''}`.toLowerCase().includes(historySearch)),
   );
@@ -711,6 +729,16 @@ document.querySelectorAll('.history-filter').forEach((button) => button.addEvent
   document.querySelectorAll('.history-filter').forEach((item) => item.classList.toggle('active', item === button));
   renderHistory();
 }));
+$('historyCalendar').addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  if (button.dataset.nav) calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + Number(button.dataset.nav), 1);
+  else if (button.dataset.clear) historyDate = '';
+  else if (button.dataset.date) historyDate = historyDate === button.dataset.date ? '' : button.dataset.date;
+  const selector = button.dataset.date ? `[data-date="${button.dataset.date}"]` : button.dataset.nav ? `[data-nav="${button.dataset.nav}"]` : '';
+  renderHistory();
+  if (selector) $('historyCalendar').querySelector(selector)?.focus();
+});
 $('historyCategory').addEventListener('change', (event) => {
   historyCategory = event.target.value;
   renderHistory();
